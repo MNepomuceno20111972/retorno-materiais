@@ -1289,7 +1289,7 @@ async function enviarParaPaletCD(base, linhas) {
     return;
   }
 
-  // 3. Lê estado atual do Firebase
+  // 3. Lê estado atual do Firebase do PaletCD
   try {
     const res = await fetch(
       `${PALETCD_FB_URL}/palet_app/state.json?key=${PALETCD_FB_KEY}`
@@ -1298,16 +1298,20 @@ async function enviarParaPaletCD(base, linhas) {
     const state = await res.json();
     if (!state) throw new Error('Estado vazio no Firebase');
 
-    // 4. Monta o novo movimento
+    // 4. Converte movs de objeto (Firebase) para array
+    let movsArr = state.movs;
+    if (movsArr && !Array.isArray(movsArr)) {
+      movsArr = Object.values(movsArr);
+    }
+    movsArr = movsArr || [];
+
+    // 5. Monta o novo movimento
     const nMov = (state.nMov || 0) + 1;
     const id = 'MOV-' + String(nMov).padStart(5, '0');
     const [y, mo, d] = base.data.split('-');
     const hora = new Date().toLocaleTimeString('pt-BR');
     const ts = `${d}/${mo}/${y}, ${hora}`;
 
-    // Nome da loja no formato do PaletCD
-    const lojaObj = (state.movs || []).find(m => m.loja == lojaDigito);
-    // busca nome via mapeamento direto
     const NOMES_LOJA = {
       1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana 1',
       9:'Tatuapé',10:'Sorocaba 1',11:'Butantã',12:'Ibitirama',13:'Moema',
@@ -1337,32 +1341,30 @@ async function enviarParaPaletCD(base, linhas) {
       usuario:'Log. Reversa', obs, modelos, ts
     };
 
-    // 4. Monta o novo estado com o movimento inserido
-    const movs = [novoMov, ...(state.movs || [])];
-    const novoState = {
-      ...state,
-      nMov,
-      movs,
-      lastSync: new Date().toISOString()
-    };
+    // 6. Insere no início e mantém como array
+    const movs = [novoMov, ...movsArr];
 
-    // 5. Recalcula est usando a mesma lógica do PaletCD
+    // 7. Atualiza est.TriagemFila e est.Lojas diretamente
     const MODELOS_PALET = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
-    const est = novoState.est || {};
-    // garante que TriagemFila existe
+    const est = state.est || {};
     if (!est.TriagemFila) est.TriagemFila = {};
     if (!est.Lojas) est.Lojas = {};
     MODELOS_PALET.forEach(k => {
       const q = modelos[k] || 0;
       if (!q) return;
-      // debita de Lojas (pode ir negativo — PaletCD usa Math.max)
       est.Lojas[k] = Math.max(0, (est.Lojas[k] || 0) - q);
-      // credita em TriagemFila
       est.TriagemFila[k] = (est.TriagemFila[k] || 0) + q;
     });
-    novoState.est = est;
 
-    // 6. Grava de volta no Firebase
+    const novoState = {
+      ...state,
+      nMov,
+      movs,
+      est,
+      lastSync: new Date().toISOString()
+    };
+
+    // 8. Grava de volta no Firebase
     const put = await fetch(
       `${PALETCD_FB_URL}/palet_app/state.json?key=${PALETCD_FB_KEY}`,
       { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(novoState) }

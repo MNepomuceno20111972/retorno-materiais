@@ -1337,7 +1337,7 @@ async function enviarParaPaletCD(base, linhas) {
       usuario:'Log. Reversa', obs, modelos, ts
     };
 
-    // 5. Insere no início do array de movimentos
+    // 4. Monta o novo estado com o movimento inserido
     const movs = [novoMov, ...(state.movs || [])];
     const novoState = {
       ...state,
@@ -1345,6 +1345,22 @@ async function enviarParaPaletCD(base, linhas) {
       movs,
       lastSync: new Date().toISOString()
     };
+
+    // 5. Recalcula est usando a mesma lógica do PaletCD
+    const MODELOS_PALET = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
+    const est = novoState.est || {};
+    // garante que TriagemFila existe
+    if (!est.TriagemFila) est.TriagemFila = {};
+    if (!est.Lojas) est.Lojas = {};
+    MODELOS_PALET.forEach(k => {
+      const q = modelos[k] || 0;
+      if (!q) return;
+      // debita de Lojas (pode ir negativo — PaletCD usa Math.max)
+      est.Lojas[k] = Math.max(0, (est.Lojas[k] || 0) - q);
+      // credita em TriagemFila
+      est.TriagemFila[k] = (est.TriagemFila[k] || 0) + q;
+    });
+    novoState.est = est;
 
     // 6. Grava de volta no Firebase
     const put = await fetch(

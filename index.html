@@ -1341,8 +1341,8 @@ async function enviarParaPaletCD(base, linhas) {
       usuario:'Log. Reversa', obs, modelos, ts
     };
 
-    // 6. Insere no início e mantém como array
-    const movs = [novoMov, ...movsArr];
+    // 6. Insere no FINAL do array
+const movs = [...movsArr, novoMov];
 
     // 7. Aplica delta direto em est.TriagemFila — SEM tocar est.Lojas
 const est = state.est || {};

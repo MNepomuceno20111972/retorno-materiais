@@ -1343,11 +1343,21 @@ async function enviarParaPaletCD(base, linhas) {
 
     // 6. Insere no início e mantém como array
     const movs = [novoMov, ...movsArr];
+
+    // 7. Aplica delta direto em est.TriagemFila — SEM tocar est.Lojas
+const est = state.est || {};
+if (!est.TriagemFila) est.TriagemFila = {};
+Object.keys(modelos).forEach(k => {
+  const q = modelos[k] || 0;
+  if (!q) return;
+  est.TriagemFila[k] = (est.TriagemFila[k] || 0) + q;
+});
     
    const novoState = {
   ...state,
   nMov,
   movs,
+  est,
   lastSync: new Date().toISOString()
 };
 

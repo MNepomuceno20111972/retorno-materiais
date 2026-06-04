@@ -1343,26 +1343,13 @@ async function enviarParaPaletCD(base, linhas) {
 
     // 6. Insere no início e mantém como array
     const movs = [novoMov, ...movsArr];
-
-    // 7. Atualiza est.TriagemFila e est.Lojas diretamente
-    const MODELOS_PALET = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
-    const est = state.est || {};
-    if (!est.TriagemFila) est.TriagemFila = {};
-    if (!est.Lojas) est.Lojas = {};
-    MODELOS_PALET.forEach(k => {
-      const q = modelos[k] || 0;
-      if (!q) return;
-      est.Lojas[k] = Math.max(0, (est.Lojas[k] || 0) - q);
-      est.TriagemFila[k] = (est.TriagemFila[k] || 0) + q;
-    });
-
-    const novoState = {
-      ...state,
-      nMov,
-      movs,
-      est,
-      lastSync: new Date().toISOString()
-    };
+    
+   const novoState = {
+  ...state,
+  nMov,
+  movs,
+  lastSync: new Date().toISOString()
+};
 
     // 8. Grava de volta no Firebase
     const put = await fetch(

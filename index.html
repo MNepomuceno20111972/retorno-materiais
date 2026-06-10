@@ -6,6 +6,7 @@
 <title>Retorno de Materiais — GODMODE</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <style>
 :root{--bg:#0d0f14;--bg2:#141720;--bg3:#1c2030;--bdr:#2a2f45;--bdr2:#3a4060;--acc:#4f8ef7;--acc2:#6fa3ff;--grn:#22c55e;--red:#ef4444;--amb:#f59e0b;--txt:#e8eaf0;--mut:#8892aa;--card:#161924;--r:8px;--rl:12px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1266,8 +1267,39 @@ const MAP_LOJA_DIGIT = {
   134:'134',135:'135',136:'136',139:'139'
 };
 
-const PALETCD_FB_URL = 'https://paletcd-default-rtdb.firebaseio.com';
-const PALETCD_FB_KEY = 'AIzaSyD9qVsBjf_v59TN8Ayvarts5Q7LXxzlVrQ';
+// ── PaletCD SYNC v2: app secundário do SDK + auth anônimo ──
+// Motivos da troca do REST pelo SDK:
+//  • As regras do paletcd exigem auth != null (login anônimo via SDK)
+//  • O contrato v2 usa transactions (contador, anticolisão de ID e
+//    deltas comutativos de estoque) — transactions não existem no REST
+const PALETCD_CONFIG = {
+  apiKey: "AIzaSyD9qVsBjf_v59TN8Ayvarts5Q7LXxzlVrQ",
+  authDomain: "paletcd.firebaseapp.com",
+  databaseURL: "https://paletcd-default-rtdb.firebaseio.com",
+  projectId: "paletcd",
+  storageBucket: "paletcd.firebasestorage.app",
+  messagingSenderId: "431517046970",
+  appId: "1:431517046970:web:e03e0ff01e1b898275ca83"
+};
+const PALETCD_V2 = 'palet_app/v2';
+const PALETCD_MODELOS = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
+
+let _palDb = null, _palAuthP = null;
+function palFbKey(s){ return String(s).replace(/[.#$\[\]\/]/g,'_'); }
+
+async function getPaletcdDb() {
+  if (_palDb) { await _palAuthP; return _palDb; }
+  if (typeof firebase === 'undefined' || !firebase.initializeApp)
+    throw new Error('SDK Firebase não carregado');
+  const app = (firebase.apps || []).find(a => a.name === 'paletcd')
+           || firebase.initializeApp(PALETCD_CONFIG, 'paletcd');
+  _palDb = app.database();
+  _palAuthP = app.auth().signInAnonymously()
+    .then(() => {})
+    .catch(e => { console.warn('Auth anônimo paletcd indisponível:', e && e.code); });
+  await _palAuthP;
+  return _palDb;
+}
 
 async function enviarParaPaletCD(base, linhas) {
   // 1. Monta objeto modelos apenas com paletes e gaiola
@@ -1289,93 +1321,79 @@ async function enviarParaPaletCD(base, linhas) {
     return;
   }
 
-  // 3. Lê estado atual do Firebase do PaletCD
+  const NOMES_LOJA = {
+    1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana 1',
+    9:'Tatuapé',10:'Sorocaba 1',11:'Butantã',12:'Ibitirama',13:'Moema',
+    14:'Penha',15:'Santana Pujol',17:'Termal',19:'Morumbi',21:'Centro',
+    23:'Cambuí',24:'Santana Ataliba',25:'Santana Tolle',26:'Sorocaba 2',
+    29:'Mooca',30:'Piracicaba',31:'Sousas',32:'Vila Mariana',33:'Galleria',
+    34:'Anália Franco',35:'São José',36:'Angelica',37:'Teodoro Sampaio',
+    38:'Ribeirão Preto',39:'Interlargos',40:'Market Place',41:'Leopoldina',
+    42:'Santo André',43:'Perdizes',55:'Campo Belo',56:'Vila Mascote',
+    57:'Jundiai Farm',62:'Shop Piracicaba',63:'Shop Jundiai',
+    64:'Alphaville Barueri',65:'Ribeirao 2',67:'São Bernardo',
+    69:'Alphaville',71:'Apucarana',72:'Shop Tatuapé',73:'Cambui 2',
+    74:'Itaim',75:'Nova Campinas',76:'Santos',79:'Sorocaba 3',80:'Itu',
+    81:'Pamplona',86:'São Jose Do Rio Preto',87:'Itatiba',88:'Cotia',
+    92:'Restaurante',97:'Cd Sumaré',100:'Cd Brasília',104:'Indaiatuba',
+    107:'Americana 2',108:'Limeira',121:'Arborais',122:'Bauru',
+    123:'Nova Cantareira',127:'Franca',134:'Damha',135:'Vila Mariana 2',
+    136:'São Carlos',139:'Itaim Bibi 2'
+  };
+
   try {
-    const res = await fetch(
-      `${PALETCD_FB_URL}/palet_app/state.json?key=${PALETCD_FB_KEY}`
-    );
-    if (!res.ok) throw new Error('Erro ao ler Firebase: ' + res.status);
-    const state = await res.json();
-    if (!state) throw new Error('Estado vazio no Firebase');
+    const pdb = await getPaletcdDb();
 
-    // 4. Converte movs de objeto (Firebase) para array
-    let movsArr = state.movs;
-    if (movsArr && !Array.isArray(movsArr)) {
-      movsArr = Object.values(movsArr);
-    }
-    movsArr = movsArr || [];
+    // 3. Reserva o número do MOV no contador compartilhado (transaction).
+    //    O contador v2 guarda o PRÓXIMO número a usar — mesmo contrato
+    //    do nMov do PaletCD (applyRemote eleva o local via Math.max).
+    const tx = await pdb.ref(`${PALETCD_V2}/counters/nMov`)
+      .transaction(cur => (cur || 1) + 1);
+    if (!tx.committed) throw new Error('Falha ao reservar número de MOV');
+    const num = (tx.snapshot.val() || 2) - 1;
+    let id = 'MOV-' + String(num).padStart(5, '0');
 
-    // 5. Monta o novo movimento
-    const nMov = (state.nMov || 0) + 1;
-    const id = 'MOV-' + String(nMov).padStart(5, '0');
+    // 4. Monta o registro no formato nativo do PaletCD v2
     const [y, mo, d] = base.data.split('-');
-    const hora = new Date().toLocaleTimeString('pt-BR');
-    const ts = `${d}/${mo}/${y}, ${hora}`;
-
-    const NOMES_LOJA = {
-      1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana 1',
-      9:'Tatuapé',10:'Sorocaba 1',11:'Butantã',12:'Ibitirama',13:'Moema',
-      14:'Penha',15:'Santana Pujol',17:'Termal',19:'Morumbi',21:'Centro',
-      23:'Cambuí',24:'Santana Ataliba',25:'Santana Tolle',26:'Sorocaba 2',
-      29:'Mooca',30:'Piracicaba',31:'Sousas',32:'Vila Mariana',33:'Galleria',
-      34:'Anália Franco',35:'São José',36:'Angelica',37:'Teodoro Sampaio',
-      38:'Ribeirão Preto',39:'Interlargos',40:'Market Place',41:'Leopoldina',
-      42:'Santo André',43:'Perdizes',55:'Campo Belo',56:'Vila Mascote',
-      57:'Jundiai Farm',62:'Shop Piracicaba',63:'Shop Jundiai',
-      64:'Alphaville Barueri',65:'Ribeirao 2',67:'São Bernardo',
-      69:'Alphaville',71:'Apucarana',72:'Shop Tatuapé',73:'Cambui 2',
-      74:'Itaim',75:'Nova Campinas',76:'Santos',79:'Sorocaba 3',80:'Itu',
-      81:'Pamplona',86:'São Jose Do Rio Preto',87:'Itatiba',88:'Cotia',
-      92:'Restaurante',97:'Cd Sumaré',100:'Cd Brasília',104:'Indaiatuba',
-      107:'Americana 2',108:'Limeira',121:'Arborais',122:'Bauru',
-      123:'Nova Cantareira',127:'Franca',134:'Damha',135:'Vila Mariana 2',
-      136:'São Carlos',139:'Itaim Bibi 2'
-    };
+    const ts = `${d}/${mo}/${y}, ${new Date().toLocaleTimeString('pt-BR')}`;
     const lojaNome = NOMES_LOJA[numLoja] || String(numLoja);
-    const obs = base.nota_fiscal ? 'NF: ' + base.nota_fiscal : '';
-
-    const novoMov = {
-      id, tipo:'Retorno de Loja',
-      origem: lojaNome, destino:'Triagem',
-      loja: numLoja, forn:'', qtd: total,
-      usuario:'Log. Reversa', obs, modelos, ts
+    const mov = {
+      id, tipo: 'Retorno de Loja',
+      origem: lojaNome, destino: 'Triagem',
+      loja: numLoja, forn: '', qtd: total,
+      usuario: 'Log. Reversa', obs: 'Origem: Retorno de Materiais',
+      modelos, ts
     };
+    if (base.nota_fiscal) mov.nf = base.nota_fiscal;
 
-    // 6. Insere no início e mantém como array
-    const movs = [novoMov, ...movsArr];
+    // 5. Grava o nó do movimento com proteção anticolisão
+    //    (mesmo contrato do pushNovo do PaletCD v2)
+    const wr = await pdb.ref(`${PALETCD_V2}/movs/${palFbKey(id)}`)
+      .transaction(cur => cur === null ? mov : undefined);
+    if (!wr.committed) {
+      id = id + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+      mov.id = id;
+      await pdb.ref(`${PALETCD_V2}/movs/${palFbKey(id)}`).set(mov);
+    }
 
-    // 7. Atualiza est.TriagemFila e est.Lojas diretamente
-    const MODELOS_PALET = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
-    const est = state.est || {};
-    if (!est.TriagemFila) est.TriagemFila = {};
-    if (!est.Lojas) est.Lojas = {};
-    MODELOS_PALET.forEach(k => {
-      const q = modelos[k] || 0;
-      if (!q) return;
-      est.Lojas[k] = Math.max(0, (est.Lojas[k] || 0) - q);
-      est.TriagemFila[k] = (est.TriagemFila[k] || 0) + q;
-    });
-
-    const novoState = {
-      ...state,
-      nMov,
-      movs,
-      est,
-      lastSync: new Date().toISOString()
-    };
-
-    // 8. Grava de volta no Firebase
-    const put = await fetch(
-      `${PALETCD_FB_URL}/palet_app/state.json?key=${PALETCD_FB_KEY}`,
-      { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(novoState) }
-    );
-    if (!put.ok) throw new Error('Erro ao gravar Firebase: ' + put.status);
+    // 6. Estoque por delta comutativo: Lojas → TriagemFila
+    //    (mesma semântica do doRetornoLoja e do calcEst 'Retorno de Loja')
+    await Promise.all(PALETCD_MODELOS.flatMap(m => {
+      const q = modelos[m] || 0;
+      if (!q) return [];
+      return [
+        pdb.ref(`${PALETCD_V2}/est/Lojas/${m}`)
+          .transaction(cur => Math.max(0, (cur || 0) - q)),
+        pdb.ref(`${PALETCD_V2}/est/TriagemFila/${m}`)
+          .transaction(cur => Math.max(0, (cur || 0) + q))
+      ];
+    }));
 
     ntfy(`✅ PaletCD: ${total} paletes → Retorno de Loja (${lojaNome})`, 'ok');
-    console.log('PaletCD sincronizado:', novoMov);
+    console.log('PaletCD v2 sincronizado:', mov);
   } catch(e) {
-    console.warn('PaletCD integração falhou:', e.message);
-    ntfy('⚠️ PaletCD não sincronizado: ' + e.message, 'er');
+    console.warn('PaletCD integração falhou:', e && (e.message || e.code));
+    ntfy('⚠️ PaletCD não sincronizado: ' + (e && (e.message || e.code)), 'er');
   }
 }
 

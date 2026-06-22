@@ -204,14 +204,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <div class="fld s2">
             <label>Loja *</label>
             <div style="position:relative">
-              <input type="text" id="nLjBusca" placeholder="🔍  Nº ou nome da loja (ex: 75 ou CAMPINAS)..." oninput="buscarLoja()" onkeydown="ljKey(event)" autocomplete="off"
+              <input type="text" id="nLjBusca" placeholder="🔍  Nº ou nome da loja (ex: 75 ou CAMPINAS)..." oninput="buscarLoja()" autocomplete="off"
                 style="width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r);color:var(--txt);padding:8px 11px;font-size:13px;outline:none">
               <div id="nLjDrop" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--bdr2);border-radius:var(--r);z-index:50;max-height:180px;overflow-y:auto;margin-top:2px"></div>
             </div>
             <input type="hidden" id="nLj">
             <div id="nLjSel" style="display:none;margin-top:6px;background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--acc2);display:flex;align-items:center;gap:8px">
               <span id="nLjNome"></span>
-              <button onclick="clrLoja()" tabindex="-1" style="margin-left:auto;background:none;border:none;color:var(--mut);cursor:pointer;font-size:14px">✕</button>
+              <button onclick="clrLoja()" style="margin-left:auto;background:none;border:none;color:var(--mut);cursor:pointer;font-size:14px">✕</button>
             </div>
           </div>
           <div class="fld">
@@ -319,8 +319,21 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="code">retorno_app/
   retorno_materiais/   ← lançamentos de retorno
   triagem/             ← fila de triagem (automático)
-  saida_fornecedores/  ← saída para fornecedores</div>
+  saida_fornecedores/  ← saída para fornecedores
+  lojas_extra/         ← lojas adicionadas por você</div>
     </div>
+  </div>
+
+  <div class="scard">
+    <h2>🏪 Adicionar Loja</h2>
+    <p>Lojas adicionadas aqui aparecem na busca de retorno e nos filtros — e sincronizam para todos os aparelhos em tempo real. O número deve ser o mesmo dígito usado no PaletCD, para o palete/gaiola fluir corretamente para a Fila de Triagem.</p>
+    <div class="frm" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:16px">
+      <div class="fld" style="max-width:130px"><label>Número *</label><input type="number" id="clNum" min="1" placeholder="Ex: 140"></div>
+      <div class="fld" style="flex:1;min-width:200px"><label>Nome da Loja *</label><input type="text" id="clNome" placeholder="Ex: CAMPINAS SHOPPING"></div>
+      <button class="btn pri" onclick="addLojaExtra()">✓ Adicionar</button>
+    </div>
+    <div class="ctit" style="margin-bottom:8px">Lojas adicionadas</div>
+    <div id="cfgLojasBox"></div>
   </div>
 </div>
 
@@ -581,7 +594,20 @@ const LOJAS_DATA=[
   {num:132,nome:'406 ASA SUL'},{num:133,nome:'HOLAMBRA'},{num:134,nome:'DAMHA'},
   {num:135,nome:'VILA MARIANA 2'},{num:136,nome:'SÃO CARLOS'},{num:139,nome:'ITAIM BIBI 2'}
 ];
-const LOJAS=LOJAS_DATA.map(l=>`${l.num} - ${l.nome}`).sort((a,b)=>Number(a.split(' - ')[0])-Number(b.split(' - ')[0]));
+// LOJAS_EXTRA: lojas adicionadas pelo usuário (sincronizadas via Firebase, nó retorno_app/lojas_extra)
+let LOJAS_EXTRA=[];
+let LOJAS=[];
+function rebuildLojas(){
+  const mapa=new Map();
+  LOJAS_DATA.forEach(l=>mapa.set(Number(l.num),l.nome));
+  LOJAS_EXTRA.forEach(l=>mapa.set(Number(l.num),l.nome)); // extra pode sobrescrever nome
+  LOJAS=[...mapa.entries()].map(([num,nome])=>`${num} - ${nome}`)
+        .sort((a,b)=>Number(a.split(' - ')[0])-Number(b.split(' - ')[0]));
+}
+rebuildLojas();
+// Helpers p/ a integração PaletCD reconhecer lojas adicionadas (dígito = número)
+function digitoExtra(num){return LOJAS_EXTRA.some(l=>Number(l.num)===Number(num))?String(num):undefined;}
+function nomeExtra(num){const l=LOJAS_EXTRA.find(x=>Number(x.num)===Number(num));return l?l.nome:undefined;}
 
 // BASE COLABORADORES — Quadro_Equipe_Logistica_Reversa.xlsx
 const COLABORADORES=[
@@ -673,6 +699,7 @@ async function loadData() {
     refreshAll();
     loadTriData();
     loadSfData();
+    watchLojasExtra();
   } catch(e) {
     console.error('loadData erro:', e);
     loadCache();
@@ -699,6 +726,48 @@ async function fbUpdateRec(id, rec) {
   return true;
 }
 
+// ── LOJAS EXTRA (sincronizadas em tempo real) ──────────
+let _lojasWatch=false;
+function watchLojasExtra(){
+  if(!fbReady||!DB||_lojasWatch)return;
+  _lojasWatch=true;
+  DB.ref('retorno_app/lojas_extra').on('value',s=>{
+    const r=s.val()||{};
+    LOJAS_EXTRA=Object.values(r).filter(x=>x&&x.num!=null);
+    rebuildLojas();
+    if(typeof popSel==='function')popSel();
+    if($('pg-cfg')&&$('pg-cfg').classList.contains('on')&&typeof renderLojasCfg==='function')renderLojasCfg();
+  },e=>console.warn('lojas_extra watch erro:',e&&e.code));
+}
+async function addLojaExtra(){
+  const num=parseInt($('clNum').value)||0;
+  const nome=($('clNome').value||'').trim().toUpperCase();
+  if(!num||num<1)return ntfy('Informe o número da loja','er');
+  if(!nome)return ntfy('Informe o nome da loja','er');
+  if([...LOJAS_DATA,...LOJAS_EXTRA].some(l=>Number(l.num)===num))
+    return ntfy('Já existe loja com o número '+num,'er');
+  if(!fbReady||!DB)return ntfy('Sem conexão Firebase — tente novamente','er');
+  try{
+    await DB.ref('retorno_app/lojas_extra/'+num).set({num,nome});
+    $('clNum').value='';$('clNome').value='';
+    ntfy('Loja '+num+' - '+nome+' adicionada','ok');
+  }catch(e){ntfy('Erro ao salvar loja','er');}
+}
+async function removerLojaExtra(num){
+  const l=LOJAS_EXTRA.find(x=>Number(x.num)===Number(num));if(!l)return;
+  if(!confirm('Remover a loja '+l.num+' - '+l.nome+'?\n\nO histórico de retornos já lançados não é apagado.'))return;
+  try{await DB.ref('retorno_app/lojas_extra/'+num).remove();ntfy('Loja removida','ok');}
+  catch(e){ntfy('Erro ao remover','er');}
+}
+function renderLojasCfg(){
+  const box=$('cfgLojasBox');if(!box)return;
+  const extra=LOJAS_EXTRA.slice().sort((a,b)=>Number(a.num)-Number(b.num));
+  box.innerHTML=extra.length?`<table><thead><tr><th>Nº</th><th>Nome</th><th>Ação</th></tr></thead><tbody>`+
+    extra.map(l=>`<tr><td>${l.num}</td><td>${l.nome}</td><td><button class="btn dng" style="padding:3px 10px;font-size:11px" onclick="removerLojaExtra(${l.num})">🗑 Remover</button></td></tr>`).join('')+
+    `</tbody></table>`
+    :'<div style="color:var(--mut);font-size:13px;padding:10px 2px">Nenhuma loja adicionada ainda.</div>';
+}
+
 async function fbDeleteRec(id) {
   if (!fbReady || !DB) return false;
   await DB.ref('retorno_app/retorno_materiais/' + id).remove();
@@ -718,6 +787,7 @@ function go(p){
   if(p==='rank'){renderRank()}
   if(p==='dash'){renderDash()}
   if(p==='sf'){SF_FILT=[...SF_ALL];renderSfTbl()}
+  if(p==='cfg'){renderLojasCfg()}
 }
 
 // STATUS
@@ -923,41 +993,14 @@ function calcTotais(){
 }
 
 // BUSCA LOJA
-// ── Busca de loja com navegação por teclado ──
-// Digite 2+ letras → 1ª sugestão já vem destacada.
-// ↓/↑ navega · Tab ou Enter seleciona · Esc fecha.
-// Tab segue o fluxo natural para o campo NF; Enter seleciona e foca a NF.
-let _ljIdx = -1;
-function ljOpts(){return Array.from(document.querySelectorAll('#nLjDrop .lj-opt'));}
-function ljHighlight(i){
-  const ops=ljOpts();if(!ops.length)return;
-  _ljIdx=Math.max(0,Math.min(i,ops.length-1));
-  ops.forEach((o,k)=>{
-    o.style.background=k===_ljIdx?'var(--bg3)':'';
-    o.style.borderLeft=k===_ljIdx?'3px solid var(--acc2)':'3px solid transparent';
-  });
-  ops[_ljIdx].scrollIntoView({block:'nearest'});
-}
-function ljKey(e){
-  const drop=$('nLjDrop');
-  if(!drop||drop.style.display==='none')return;
-  const ops=ljOpts();if(!ops.length)return;
-  if(e.key==='ArrowDown'){e.preventDefault();ljHighlight(_ljIdx+1);}
-  else if(e.key==='ArrowUp'){e.preventDefault();ljHighlight(_ljIdx-1);}
-  else if(e.key==='Enter'){e.preventDefault();selLoja(ops[Math.max(0,_ljIdx)].dataset.loja);const nf=$('nNF');if(nf)nf.focus();}
-  else if(e.key==='Tab'){selLoja(ops[Math.max(0,_ljIdx)].dataset.loja);} // sem preventDefault: o Tab segue para a NF
-  else if(e.key==='Escape'){drop.style.display='none';_ljIdx=-1;}
-}
 function buscarLoja(){
   const q=$('nLjBusca').value.trim().toLowerCase();
   const drop=$('nLjDrop');
-  _ljIdx=-1;
   if(q.length<2){drop.style.display='none';return}
   const res=LOJAS.filter(l=>l.toLowerCase().includes(q)).slice(0,12);
   if(!res.length){drop.style.display='none';return}
-  drop.innerHTML=res.map((l,i)=>`<div class="lj-opt" data-i="${i}" data-loja="${l.replace(/"/g,'&quot;')}" onclick="selLoja(this.dataset.loja)" onmouseover="ljHighlight(${i})" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr);color:var(--txt);border-left:3px solid transparent">${l}</div>`).join('');
+  drop.innerHTML=res.map(l=>`<div onclick="selLoja('${l.replace(/'/g,"\\'")}') " style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr);color:var(--txt)" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">${l}</div>`).join('');
   drop.style.display='block';
-  ljHighlight(0); // primeira sugestão pré-selecionada: 3 letras + Tab = loja escolhida
 }
 
 function selLoja(nome){
@@ -1342,7 +1385,7 @@ async function enviarParaPaletCD(base, linhas) {
 
   // 2. Extrai número da loja do formato "64 - ALPHAVILLE BARUERI"
   const numLoja = parseInt((base.loja || '').split(' - ')[0]);
-  const lojaDigito = MAP_LOJA_DIGIT[numLoja];
+  const lojaDigito = MAP_LOJA_DIGIT[numLoja] || digitoExtra(numLoja);
   if (!lojaDigito) {
     console.warn('PaletCD: loja não mapeada:', base.loja);
     return;
@@ -1383,7 +1426,7 @@ async function enviarParaPaletCD(base, linhas) {
     // 4. Monta o registro no formato nativo do PaletCD v2
     const [y, mo, d] = base.data.split('-');
     const ts = `${d}/${mo}/${y}, ${new Date().toLocaleTimeString('pt-BR')}`;
-    const lojaNome = NOMES_LOJA[numLoja] || String(numLoja);
+    const lojaNome = NOMES_LOJA[numLoja] || nomeExtra(numLoja) || String(numLoja);
     const mov = {
       id, tipo: 'Retorno de Loja',
       origem: lojaNome, destino: 'Triagem',

@@ -937,7 +937,21 @@ function buscarLoja(){
 function setLjIdx(i){
   ljIdx=i;
   const items=$('nLjDrop').querySelectorAll('.lj-item');
-  items.forEach((el,idx)=>el.style.background=idx===i?'var(--bg3)':'');
+  items.forEach((el,idx)=>{
+    if(idx===i){
+      el.style.background='var(--acc)';
+      el.style.color='#fff';
+      el.style.fontWeight='600';
+      el.style.borderLeft='3px solid #fff';
+      el.style.paddingLeft='9px';
+    }else{
+      el.style.background='';
+      el.style.color='var(--txt)';
+      el.style.fontWeight='400';
+      el.style.borderLeft='none';
+      el.style.paddingLeft='12px';
+    }
+  });
 }
 
 function navLoja(e){
@@ -953,10 +967,11 @@ function navLoja(e){
     e.preventDefault();
     setLjIdx((ljIdx-1+items.length)%items.length);
     items[ljIdx].scrollIntoView({block:'nearest'});
-  }else if(e.key==='Enter'){
+  }else if(e.key==='Enter'||e.key==='Tab'){
     e.preventDefault();
     const alvo=ljIdx>=0?items[ljIdx]:items[0];
     alvo.click();
+    $('nNF').focus(); // segue para o próximo campo
   }else if(e.key==='Escape'){
     drop.style.display='none';ljIdx=-1;
   }

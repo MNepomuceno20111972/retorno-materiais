@@ -6,6 +6,7 @@
 <title>Retorno de Materiais — GODMODE</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <style>
 :root{--bg:#0d0f14;--bg2:#141720;--bg3:#1c2030;--bdr:#2a2f45;--bdr2:#3a4060;--acc:#4f8ef7;--acc2:#6fa3ff;--grn:#22c55e;--red:#ef4444;--amb:#f59e0b;--txt:#e8eaf0;--mut:#8892aa;--card:#161924;--r:8px;--rl:12px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1312,8 +1313,24 @@ const MAP_LOJA_DIGIT = {
   134:'134',135:'135',136:'136',139:'139'
 };
 
-const PALETCD_FB_URL = 'https://paletcd-default-rtdb.firebaseio.com';
-const PALETCD_FB_KEY = 'AIzaSyD9qVsBjf_v59TN8Ayvarts5Q7LXxzlVrQ';
+const PALETCD_CONFIG = {
+  apiKey: 'AIzaSyD9qVsBjf_v59TN8Ayvarts5Q7LXxzlVrQ',
+  authDomain: 'paletcd.firebaseapp.com',
+  databaseURL: 'https://paletcd-default-rtdb.firebaseio.com',
+  projectId: 'paletcd'
+};
+let PALETCD_DB = null, _paletcdAuth = null;
+
+// App Firebase secundário isolado para o projeto paletcd + login anônimo
+function paletcdInit() {
+  if (_paletcdAuth) return _paletcdAuth;
+  const app = firebase.apps.find(a => a.name === 'paletcd')
+            || firebase.initializeApp(PALETCD_CONFIG, 'paletcd');
+  PALETCD_DB = app.database();
+  _paletcdAuth = app.auth().signInAnonymously()
+    .catch(e => { _paletcdAuth = null; throw new Error('Auth PaletCD falhou: ' + e.message); });
+  return _paletcdAuth;
+}
 
 async function enviarParaPaletCD(base, linhas) {
   // 1. Monta objeto modelos apenas com paletes e gaiola
@@ -1335,28 +1352,10 @@ async function enviarParaPaletCD(base, linhas) {
     return;
   }
 
-  // 3. Lê estado atual do Firebase do PaletCD
+  // 3. Grava no PaletCD v2 com escrita granular (sem ler/reescrever a árvore toda)
   try {
-    const res = await fetch(
-      `${PALETCD_FB_URL}/palet_app/state.json?key=${PALETCD_FB_KEY}`
-    );
-    if (!res.ok) throw new Error('Erro ao ler Firebase: ' + res.status);
-    const state = await res.json();
-    if (!state) throw new Error('Estado vazio no Firebase');
-
-    // 4. Converte movs de objeto (Firebase) para array
-    let movsArr = state.movs;
-    if (movsArr && !Array.isArray(movsArr)) {
-      movsArr = Object.values(movsArr);
-    }
-    movsArr = movsArr || [];
-
-    // 5. Monta o novo movimento
-    const nMov = (state.nMov || 0) + 1;
-    const id = 'MOV-' + String(nMov).padStart(5, '0');
-    const [y, mo, d] = base.data.split('-');
-    const hora = new Date().toLocaleTimeString('pt-BR');
-    const ts = `${d}/${mo}/${y}, ${hora}`;
+    await paletcdInit();
+    const root = PALETCD_DB.ref('palet_app/v2');
 
     const NOMES_LOJA = {
       1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana 1',
@@ -1378,47 +1377,36 @@ async function enviarParaPaletCD(base, linhas) {
       136:'São Carlos',139:'Itaim Bibi 2'
     };
     const lojaNome = NOMES_LOJA[numLoja] || String(numLoja);
-    const obs = base.nota_fiscal ? 'NF: ' + base.nota_fiscal : '';
 
-    const novoMov = {
-      id, tipo:'Retorno de Loja',
-      origem: lojaNome, destino:'Triagem',
-      loja: numLoja, forn:'', qtd: total,
-      usuario:'Log. Reversa', obs, modelos, ts
-    };
-
-    // 6. Insere no início e mantém como array
-    const movs = [novoMov, ...movsArr];
-
-    // 7. Atualiza est.TriagemFila e est.Lojas diretamente
+    // 3a. Delta-direct em est.TriagemFila (transação por modelo). NUNCA toca est.Lojas.
     const MODELOS_PALET = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
-    const est = state.est || {};
-    if (!est.TriagemFila) est.TriagemFila = {};
-    if (!est.Lojas) est.Lojas = {};
-    MODELOS_PALET.forEach(k => {
+    for (const k of MODELOS_PALET) {
       const q = modelos[k] || 0;
-      if (!q) return;
-      est.Lojas[k] = Math.max(0, (est.Lojas[k] || 0) - q);
-      est.TriagemFila[k] = (est.TriagemFila[k] || 0) + q;
-    });
+      if (!q) continue;
+      await root.child('est/TriagemFila/' + k).transaction(cur => (cur || 0) + q);
+    }
 
-    const novoState = {
-      ...state,
-      nMov,
-      movs,
-      est,
-      lastSync: new Date().toISOString()
+    // 3b. Novo número de movimento via transação (lê o valor já comitado)
+    const r = await root.child('nMov').transaction(cur => (cur || 0) + 1);
+    const nMov = r.snapshot.val();
+    const id = 'MOV-' + String(nMov).padStart(5, '0');
+
+    // 3c. Registra o movimento
+    const [y, mo, d] = base.data.split('-');
+    const ts = `${d}/${mo}/${y}, ${new Date().toLocaleTimeString('pt-BR')}`;
+    const novoMov = {
+      id, tipo:'Retorno de Loja', origem: lojaNome, destino:'Triagem',
+      loja: numLoja, forn:'', qtd: total,
+      usuario:'Log. Reversa', obs: base.nota_fiscal ? 'NF: ' + base.nota_fiscal : '',
+      modelos, ts, nMov
     };
+    // CONFIRMAR shape de movs no seu v2: aqui grava como filho keyed por id (movs/MOV-00042)
+    await root.child('movs/' + id).set(novoMov);
 
-    // 8. Grava de volta no Firebase
-    const put = await fetch(
-      `${PALETCD_FB_URL}/palet_app/state.json?key=${PALETCD_FB_KEY}`,
-      { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(novoState) }
-    );
-    if (!put.ok) throw new Error('Erro ao gravar Firebase: ' + put.status);
+    await root.child('lastSync').set(new Date().toISOString());
 
-    ntfy(`✅ PaletCD: ${total} paletes → Retorno de Loja (${lojaNome})`, 'ok');
-    console.log('PaletCD sincronizado:', novoMov);
+    ntfy(`✅ PaletCD: ${total} paletes → Triagem (${lojaNome})`, 'ok');
+    console.log('PaletCD v2 sincronizado:', novoMov);
   } catch(e) {
     console.warn('PaletCD integração falhou:', e.message);
     ntfy('⚠️ PaletCD não sincronizado: ' + e.message, 'er');

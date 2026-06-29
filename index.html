@@ -389,17 +389,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <select id="sfFMat" onchange="filterSf()">
       <option value="">Todos materiais</option>
       <option>PALETE PBR</option><option>PALETE CHEP</option><option>PALETE DESCARTAVEL</option>
-      <option>Caixa Plástica Modelo - P (Uva / Morango)</option>
-      <option>Caixa Plástica Modelo - P (Mamão / Manga)</option>
-      <option>Caixa Plástica Modelo - M (Banana)</option>
-      <option>Caixa Plástica Modelo - M (Roça)</option>
-      <option>Caixa Plástica Modelo - M (Bandejão)</option>
-      <option>Caixa Plástica Modelo - M (Abacaxi)</option>
-      <option>Caixa Plástica Modelo - M (Bandejão Lichia)</option>
-      <option>Caixa Plástica Modelo - G (Verde)</option>
-      <option>Caixa Plástica Modelo - G</option>
-      <option>Caixa Plástica Modelo Caradori</option>
-      <option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
+      <option>CAIXA M</option><option>CAIXA G</option><option>CAIXA P</option>
+      <option>CARADORI</option><option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
       <option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
     </select>
     <select id="sfFSaldo" onchange="filterSf()">
@@ -461,17 +452,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <select id="sfMMat">
             <option value="">Selecione o material...</option>
             <option>PALETE PBR</option><option>PALETE CHEP</option><option>PALETE DESCARTAVEL</option>
-            <option>Caixa Plástica Modelo - P (Uva / Morango)</option>
-            <option>Caixa Plástica Modelo - P (Mamão / Manga)</option>
-            <option>Caixa Plástica Modelo - M (Banana)</option>
-            <option>Caixa Plástica Modelo - M (Roça)</option>
-            <option>Caixa Plástica Modelo - M (Bandejão)</option>
-            <option>Caixa Plástica Modelo - M (Abacaxi)</option>
-            <option>Caixa Plástica Modelo - M (Bandejão Lichia)</option>
-            <option>Caixa Plástica Modelo - G (Verde)</option>
-            <option>Caixa Plástica Modelo - G</option>
-            <option>Caixa Plástica Modelo Caradori</option>
-            <option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
+            <option>CAIXA M</option><option>CAIXA G</option><option>CAIXA P</option>
+            <option>CARADORI</option><option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
             <option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
           </select>
         </div>
@@ -572,38 +554,43 @@ const LOJAS_DATA=[
   {num:5,nome:'AMOREIRAS'},{num:6,nome:'AMERICANA'},{num:9,nome:'TATUAPÉ'},
   {num:10,nome:'SOROCABA 1'},{num:11,nome:'BUTANTA'},{num:12,nome:'IBITIRAMA'},
   {num:13,nome:'MOEMA'},{num:14,nome:'PENHA'},{num:15,nome:'SANTANA PUJOL'},
-  {num:17,nome:'THE MALL'},{num:19,nome:'MORUMBI'},{num:21,nome:'CENTRO'},
-  {num:23,nome:'CAMBUÍ'},{num:24,nome:'SANTANA ATALIBA'},{num:25,nome:'SANTANA TOLLE'},
-  {num:26,nome:'SOROCABA 2'},{num:29,nome:'MOOCA'},{num:30,nome:'PIRACICABA'},
-  {num:31,nome:'SOUSAS'},{num:32,nome:'VILA MARIANA'},{num:33,nome:'GALLERIA'},
-  {num:34,nome:'ANÁLIA FRANCO'},{num:35,nome:'SÃO JOSÉ DOS CAMPOS'},{num:36,nome:'ANGÉLICA'},
-  {num:37,nome:'TEODORO SAMPAIO'},{num:38,nome:'RIBEIRÃO PRETO'},{num:39,nome:'INTERLAGOS'},
-  {num:40,nome:'MARKET PLACE'},{num:41,nome:'LEOPOLDINA'},{num:42,nome:'SANTO ANDRÉ'},
-  {num:43,nome:'PERDIZES'},{num:44,nome:'306 NORT'},{num:45,nome:'COLORADO'},
-  {num:46,nome:'302 SUL'},{num:47,nome:'QI09 LA'},{num:48,nome:'212 SUL'},
-  {num:49,nome:'CASTANHEIRA'},{num:50,nome:'D BOSCO'},{num:51,nome:'ARAUCÁRIAS'},
-  {num:52,nome:'209 NOR'},{num:53,nome:'FLAMBOYANT'},{num:54,nome:'T63'},
-  {num:55,nome:'CAMPO BELO'},{num:56,nome:'VILA MASCOTE'},{num:57,nome:'JUNDIAÍ'},
-  {num:58,nome:'VICT PIRES'},{num:59,nome:'ASA SUL'},{num:61,nome:'SHP IGUT DF'},
-  {num:62,nome:'PIRA WAY'},{num:63,nome:'SHOP JUNDIAÍ'},{num:64,nome:'ALPHAVILLE BARUERI'},
-  {num:65,nome:'RIBEIRÃO PRETO 2'},{num:67,nome:'SÃO BERNARDO'},{num:69,nome:'ALPHAVILLE'},
-  {num:71,nome:'APUCARANA'},{num:72,nome:'SHOPPING TATUAPÉ'},{num:73,nome:'CAMBUÍ 2'},
-  {num:74,nome:'ITAIM BIBI'},{num:75,nome:'NOVA CAMPINAS'},{num:76,nome:'SANTOS'},
-  {num:79,nome:'SOROCABA 3'},{num:80,nome:'ITU'},{num:81,nome:'PAMPLONA'},
+  {num:16,nome:'TAQUARAL'},{num:17,nome:'THE MALL'},{num:19,nome:'MORUMBI'},
+  {num:21,nome:'CENTRO'},{num:23,nome:'CAMBUÍ'},{num:24,nome:'SANTANA ATALIBA'},
+  {num:25,nome:'SANTANA TOLLE'},{num:26,nome:'SOROCABA 2'},{num:29,nome:'MOOCA'},
+  {num:30,nome:'PIRACICABA'},{num:31,nome:'SOUSAS'},{num:32,nome:'VILA MARIANA'},
+  {num:33,nome:'GALLERIA'},{num:34,nome:'ANÁLIA FRANCO'},{num:35,nome:'SÃO JOSÉ DOS CAMPOS'},
+  {num:36,nome:'ANGELICA'},{num:37,nome:'TEODORO SAMPAIO'},{num:38,nome:'RIBEIRÃO PRETO'},
+  {num:39,nome:'INTERLAGOS'},{num:40,nome:'MARKET PLACE'},{num:41,nome:'LEOPOLDINA'},
+  {num:42,nome:'SANTO ANDRÉ'},{num:43,nome:'PERDIZES'},{num:44,nome:'306 NORT'},
+  {num:45,nome:'COLORADO'},{num:46,nome:'302 SUL'},{num:47,nome:'QI09 LA'},
+  {num:48,nome:'212 SUL'},{num:49,nome:'CASTANHEIRA'},{num:50,nome:'D BOSCO'},
+  {num:51,nome:'ARAUCÁRIAS'},{num:52,nome:'209 NOR'},{num:53,nome:'FLAMBOYANT'},
+  {num:54,nome:'T63'},{num:55,nome:'CAMPO BELO'},{num:56,nome:'VILA MASCOTE'},
+  {num:57,nome:'JUNDIAI'},{num:58,nome:'VICT PIRES'},{num:59,nome:'ASA SUL'},
+  {num:61,nome:'SHPIGUTDF'},{num:62,nome:'PIRA WAY'},{num:63,nome:'SHOP JUNDIAI'},
+  {num:64,nome:'ALPHAVILLE BARUERI'},{num:65,nome:'RIBEIRÃO PRETO 2'},{num:67,nome:'SÃO BERNARDO'},
+  {num:69,nome:'ALPHAVILLE'},{num:70,nome:'FRIGORIFICO'},{num:71,nome:'APUCARANA'},
+  {num:72,nome:'SHOPPING TATUAPÉ'},{num:73,nome:'CAMBUI 2'},{num:74,nome:'ITAIM BIBI'},
+  {num:75,nome:'NOVA CAMPINAS'},{num:76,nome:'SANTOS'},{num:79,nome:'SOROCABA 3'},
+  {num:80,nome:'ITU'},{num:81,nome:'PAMPLONA'},{num:84,nome:'TATUAPÉ 3'},
   {num:86,nome:'SÃO JOSÉ DO RIO PRETO'},{num:87,nome:'ITATIBA'},{num:88,nome:'GRANJA VIANA'},
-  {num:92,nome:'RESTAURANTE'},{num:94,nome:'CAIXARIA'},{num:97,nome:'CD 97'},
-  {num:100,nome:'CD 100'},{num:104,nome:'INDAIATUBA'},{num:107,nome:'AMERICANA 2'},
-  {num:108,nome:'LIMEIRA'},{num:121,nome:'ARBORAIS'},{num:122,nome:'BAURU'},
-  {num:123,nome:'NOVA CANTAREIRA'},{num:124,nome:'CD BAHIA'},{num:125,nome:'CD SÃO MIGUEL'},
-  {num:127,nome:'FRANCA'},{num:130,nome:'SÃO MATEUS'},{num:131,nome:'203 ASA SUL'},
-  {num:132,nome:'406 ASA SUL'},{num:133,nome:'HOLAMBRA'},{num:134,nome:'DAMHA'},
-  {num:135,nome:'VILA MARIANA 2'},{num:136,nome:'SÃO CARLOS'},{num:139,nome:'ITAIM BIBI 2'}
+  {num:92,nome:'RESTAURANTE'},{num:94,nome:'CAIXARIA'},{num:97,nome:'CD SUMARÉ'},
+  {num:99,nome:'PRODUÇÃO'},{num:100,nome:'CD BRASÍLIA'},{num:104,nome:'INDAIATUBA'},
+  {num:107,nome:'AMERICANA 2'},{num:108,nome:'LIMEIRA'},{num:120,nome:'OURO VERDE'},
+  {num:121,nome:'ARBORAIS'},{num:122,nome:'BAURU'},{num:123,nome:'NOVA CANTAREIRA'},
+  {num:124,nome:'CD BAHIA'},{num:125,nome:'CD SÃO MIGUEL'},{num:127,nome:'FRANCA'},
+  {num:128,nome:'URBANOVA'},{num:130,nome:'SÃO MATEUS'},{num:131,nome:'203 ASA SUL'},
+  {num:132,nome:'PRODUÇÃO'},{num:133,nome:'HOLAMBRA'},{num:134,nome:'DAMHA'},
+  {num:135,nome:'VILA MARIANA 2'},{num:136,nome:'SÃO CARLOS'},{num:139,nome:'ITAIM BIBI 2'},
+  {num:140,nome:'SWISS PARK'},{num:141,nome:'RIO CLARO'},{num:142,nome:'MASCOTE 2'},
+  {num:143,nome:'RIO GRANDE'},{num:144,nome:'SÃO BERNARDO 2'},{num:145,nome:'EMBARE'},
+  {num:146,nome:'ARAPANES'},{num:147,nome:'OLIMPIA'},{num:148,nome:'PARAISO'},
+  {num:149,nome:'INTERLAGOS'},{num:150,nome:'CORUJAS'},{num:151,nome:'J CACHOEIRAS'}
 ];
 const LOJAS=LOJAS_DATA.map(l=>`${l.num} - ${l.nome}`).sort((a,b)=>Number(a.split(' - ')[0])-Number(b.split(' - ')[0]));
 
 // BASE COLABORADORES — Quadro_Equipe_Logistica_Reversa.xlsx
 const COLABORADORES=[
-  {mat:'TSI',nome:'Colaborador TSI',cargo:'PRESTADOR DE SERVIÇO (TSI)',turno:'TSI - Terceiro'},
   {mat:'01790206',nome:'ALBERTINO DOS SANTOS PRETO',cargo:'OPERADOR DE LOGÍSTICA II',turno:'LOG - Reversa Equipe'},
   {mat:'02201073',nome:'ANTONIO JOSE SILVA DE OLIVEIRA',cargo:'AUXILIAR DE HIGIENIZAÇÃO II',turno:'LOG Reversa Equipe T2'},
   {mat:'02201061',nome:'CESAR VINICIOS THOMAZ ALVES DOS SANTOS',cargo:'CONFERENTE I',turno:'LOG - Reversa Equipe'},
@@ -1322,14 +1309,16 @@ const MAP_PALET = {
 // Extraído de LOJAS_BASE do PaletCD
 const MAP_LOJA_DIGIT = {
   1:'1',2:'2',3:'3',5:'5',6:'6',9:'9',10:'10',11:'11',12:'12',13:'13',
-  14:'14',15:'15',16:'16',17:'17',19:'19',21:'21',23:'23',24:'24',25:'25',
-  26:'26',29:'29',30:'30',31:'31',32:'32',33:'33',34:'34',35:'35',36:'36',
-  37:'37',38:'38',39:'39',40:'40',41:'41',42:'42',43:'43',55:'55',56:'56',
-  57:'57',62:'62',63:'63',64:'64',65:'65',67:'67',69:'69',70:'70',71:'71',
-  72:'72',73:'73',74:'74',75:'75',76:'76',79:'79',80:'80',81:'81',84:'84',
-  86:'86',87:'87',88:'88',92:'92',97:'97',99:'99',100:'100',104:'104',
-  107:'107',108:'108',120:'120',121:'121',122:'122',123:'123',127:'127',
-  134:'134',135:'135',136:'136',139:'139'
+  14:'14',15:'15',16:'16',17:'17',19:'19',21:'21',23:'23',24:'24',25:'25',26:'26',
+  29:'29',30:'30',31:'31',32:'32',33:'33',34:'34',35:'35',36:'36',37:'37',38:'38',
+  39:'39',40:'40',41:'41',42:'42',43:'43',44:'44',45:'45',46:'46',47:'47',48:'48',
+  49:'49',50:'50',51:'51',52:'52',53:'53',54:'54',55:'55',56:'56',57:'57',58:'58',
+  59:'59',61:'61',62:'62',63:'63',64:'64',65:'65',67:'67',69:'69',70:'70',71:'71',
+  72:'72',73:'73',74:'74',75:'75',76:'76',79:'79',80:'80',81:'81',84:'84',86:'86',
+  87:'87',88:'88',92:'92',94:'94',97:'97',99:'99',100:'100',104:'104',107:'107',108:'108',
+  120:'120',121:'121',122:'122',123:'123',124:'124',125:'125',127:'127',128:'128',130:'130',131:'131',
+  132:'132',133:'133',134:'134',135:'135',136:'136',139:'139',140:'140',141:'141',142:'142',143:'143',
+  144:'144',145:'145',146:'146',147:'147',148:'148',149:'149',150:'150',151:'151'
 };
 
 const PALETCD_CONFIG = {
@@ -1377,23 +1366,28 @@ async function enviarParaPaletCD(base, linhas) {
     const root = PALETCD_DB.ref('palet_app/v2');
 
     const NOMES_LOJA = {
-      1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana 1',
-      9:'Tatuapé',10:'Sorocaba 1',11:'Butantã',12:'Ibitirama',13:'Moema',
-      14:'Penha',15:'Santana Pujol',17:'Termal',19:'Morumbi',21:'Centro',
-      23:'Cambuí',24:'Santana Ataliba',25:'Santana Tolle',26:'Sorocaba 2',
+      1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana',
+      9:'Tatuapé',10:'Sorocaba 1',11:'Butanta',12:'Ibitirama',13:'Moema',
+      14:'Penha',15:'Santana Pujol',16:'Taquaral',17:'The Mall',19:'Morumbi',
+      21:'Centro',23:'Cambuí',24:'Santana Ataliba',25:'Santana Tolle',26:'Sorocaba 2',
       29:'Mooca',30:'Piracicaba',31:'Sousas',32:'Vila Mariana',33:'Galleria',
-      34:'Anália Franco',35:'São José',36:'Angelica',37:'Teodoro Sampaio',
-      38:'Ribeirão Preto',39:'Interlargos',40:'Market Place',41:'Leopoldina',
-      42:'Santo André',43:'Perdizes',55:'Campo Belo',56:'Vila Mascote',
-      57:'Jundiai Farm',62:'Shop Piracicaba',63:'Shop Jundiai',
-      64:'Alphaville Barueri',65:'Ribeirao 2',67:'São Bernardo',
-      69:'Alphaville',71:'Apucarana',72:'Shop Tatuapé',73:'Cambui 2',
-      74:'Itaim',75:'Nova Campinas',76:'Santos',79:'Sorocaba 3',80:'Itu',
-      81:'Pamplona',86:'São Jose Do Rio Preto',87:'Itatiba',88:'Cotia',
-      92:'Restaurante',97:'Cd Sumaré',100:'Cd Brasília',104:'Indaiatuba',
-      107:'Americana 2',108:'Limeira',121:'Arborais',122:'Bauru',
-      123:'Nova Cantareira',127:'Franca',134:'Damha',135:'Vila Mariana 2',
-      136:'São Carlos',139:'Itaim Bibi 2'
+      34:'Anália Franco',35:'São José Dos Campos',36:'Angelica',37:'Teodoro Sampaio',38:'Ribeirão Preto',
+      39:'Interlagos',40:'Market Place',41:'Leopoldina',42:'Santo André',43:'Perdizes',
+      44:'306 Nort',45:'Colorado',46:'302 Sul',47:'Qi09 La',48:'212 Sul',
+      49:'Castanheira',50:'D Bosco',51:'Araucárias',52:'209 Nor',53:'Flamboyant',
+      54:'T63',55:'Campo Belo',56:'Vila Mascote',57:'Jundiai',58:'Vict Pires',
+      59:'Asa Sul',61:'ShpIgutDF',62:'Pira Way',63:'Shop Jundiai',64:'Alphaville Barueri',
+      65:'Ribeirão Preto 2',67:'São Bernardo',69:'Alphaville',70:'Frigorifico',71:'Apucarana',
+      72:'Shopping Tatuapé',73:'Cambui 2',74:'Itaim Bibi',75:'Nova Campinas',76:'Santos',
+      79:'Sorocaba 3',80:'Itu',81:'Pamplona',84:'Tatuapé 3',86:'São José Do Rio Preto',
+      87:'Itatiba',88:'Granja Viana',92:'Restaurante',94:'Caixaria',97:'Cd Sumaré',
+      99:'Produção',100:'Cd Brasília',104:'Indaiatuba',107:'Americana 2',108:'Limeira',
+      120:'Ouro Verde',121:'Arborais',122:'Bauru',123:'Nova Cantareira',124:'Cd Bahia',
+      125:'Cd São Miguel',127:'Franca',128:'Urbanova',130:'São Mateus',131:'203 Asa Sul',
+      132:'Produção',133:'Holambra',134:'Damha',135:'Vila Mariana 2',136:'São Carlos',
+      139:'Itaim Bibi 2',140:'Swiss Park',141:'Rio Claro',142:'Mascote 2',143:'Rio Grande',
+      144:'São Bernardo 2',145:'Embare',146:'Arapanes',147:'Olimpia',148:'Paraiso',
+      149:'Interlagos',150:'Corujas',151:'J Cachoeiras'
     };
     const lojaNome = NOMES_LOJA[numLoja] || String(numLoja);
 

@@ -120,6 +120,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="ni" id="nav-rank" onclick="go('rank')">🏆 <span>Ranking Lojas</span></div>
   <div class="ni" id="nav-tri" onclick="go('tri')">🗂️ <span>Triagem</span><span class="nc" id="navTriCnt">—</span></div>
   <div class="ni" id="nav-sf" onclick="go('sf')">🚚 <span>Saída Fornecedores</span><span class="nc" id="navSfCnt">—</span></div>
+  <div class="ni" id="nav-sfdash" onclick="go('sfdash')">📦 <span>Saldo Fornecedores</span></div>
   <div class="nlbl">Sistema</div>
   <div class="ni" id="nav-exp" onclick="go('exp')">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-cfg" onclick="go('cfg')">⚙️ <span>Configuração</span></div>
@@ -392,6 +393,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <option>CAIXA M</option><option>CAIXA G</option><option>CAIXA P</option>
       <option>CARADORI</option><option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
       <option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
+      <option>CX DE FORNECEDOR</option><option>CAIXA BIMBO</option><option>CARRINHO DE FLOR</option>
+      <option>CESTOS</option><option>EURO</option><option>EURO CHEP</option>
     </select>
     <select id="sfFSaldo" onchange="filterSf()">
       <option value="">Todos saldos</option>
@@ -431,6 +434,30 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- DASHBOARD SALDO FORNECEDORES -->
+<div class="pg" id="pg-sfdash">
+  <div class="kgrid" id="sfdCards" style="grid-template-columns:repeat(5,1fr)"></div>
+  <div class="tbox">
+    <div class="thead2"><span class="ttit">📦 Saldo por item (a devolver ao fornecedor)</span><span class="tcnt" id="sfdItemCnt"></span></div>
+    <div class="tscroll"><table>
+      <thead><tr>
+        <th>Item</th>
+        <th style="text-align:center">Entrada (saiu do CD)</th>
+        <th style="text-align:center">Saída (confirmado)</th>
+        <th style="text-align:center">Saldo</th>
+      </tr></thead>
+      <tbody id="sfdItemBody"></tbody>
+    </table></div>
+  </div>
+  <div class="tbox">
+    <div class="thead2"><span class="ttit">🏭 Saldo por fornecedor</span><span class="tcnt" id="sfdFornCnt"></span></div>
+    <div class="tscroll"><table>
+      <thead><tr id="sfdFornHead"></tr></thead>
+      <tbody id="sfdFornBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
 </main>
 </div>
 
@@ -455,6 +482,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <option>CAIXA M</option><option>CAIXA G</option><option>CAIXA P</option>
             <option>CARADORI</option><option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
             <option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
+            <option>CX DE FORNECEDOR</option><option>CAIXA BIMBO</option><option>CARRINHO DE FLOR</option>
+            <option>CESTOS</option><option>EURO</option><option>EURO CHEP</option>
           </select>
         </div>
         <div class="fld"><label>Entrada (saiu do CD)</label><input type="number" id="sfMEnt" placeholder="0" min="0" oninput="calcSaldo()"></div>
@@ -591,6 +620,8 @@ const LOJAS=LOJAS_DATA.map(l=>`${l.num} - ${l.nome}`).sort((a,b)=>Number(a.split
 
 // BASE COLABORADORES — Quadro_Equipe_Logistica_Reversa.xlsx
 const COLABORADORES=[
+  {mat:'TSI',nome:'Colaborador TSI',cargo:'PRESTADOR DE SERVIÇO (TSI)',turno:'TSI - Terceiro'},
+  {mat:'02201960',nome:'ELIENE LIMA OLIVEIRA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'},
   {mat:'01790206',nome:'ALBERTINO DOS SANTOS PRETO',cargo:'OPERADOR DE LOGÍSTICA II',turno:'LOG - Reversa Equipe'},
   {mat:'02201073',nome:'ANTONIO JOSE SILVA DE OLIVEIRA',cargo:'AUXILIAR DE HIGIENIZAÇÃO II',turno:'LOG Reversa Equipe T2'},
   {mat:'02201061',nome:'CESAR VINICIOS THOMAZ ALVES DOS SANTOS',cargo:'CONFERENTE I',turno:'LOG - Reversa Equipe'},
@@ -724,6 +755,7 @@ function go(p){
   if(p==='rank'){renderRank()}
   if(p==='dash'){renderDash()}
   if(p==='sf'){SF_FILT=[...SF_ALL];renderSfTbl()}
+  if(p==='sfdash'){renderSfDash()}
 }
 
 // STATUS
@@ -1497,6 +1529,67 @@ function srtSf(field){
     return sfSortD==='asc'?(va>vb?1:-1):(va<vb?1:-1);
   });
   renderSfTbl();
+}
+
+// ===== DASHBOARD SALDO FORNECEDORES =====
+// Categorias a devolver. 'mats' lista os nomes de material que caem em cada uma
+// (aliases cobrem variações de nome, ex.: CARRINHO BIMBO x CARRO DOLLY BIMBO).
+const SF_DEVOLVER=[
+  {key:'Caixas Fornecedores', mats:['CX DE FORNECEDOR']},
+  {key:'Caixas Bimbo',        mats:['CAIXA BIMBO']},
+  {key:'Carrinho Bimbo',      mats:['CARRINHO BIMBO','CARRO DOLLY BIMBO']},
+  {key:'Carrinho de Flor',    mats:['CARRINHO DE FLOR']}
+];
+
+function renderSfDash(){
+  const cats=SF_DEVOLVER;
+  const matToCat={};
+  cats.forEach(c=>c.mats.forEach(m=>matToCat[m.toUpperCase()]=c.key));
+
+  const catTot={}; cats.forEach(c=>catTot[c.key]={ent:0,sai:0,sal:0});
+  const fmap={};   // fornecedor -> {cat:saldo}
+
+  (SF_ALL||[]).forEach(r=>{
+    const cat=matToCat[(r.material||'').toUpperCase()];
+    if(!cat) return;
+    const ent=Number(r.entrada)||0, sai=Number(r.saida)||0;
+    const sal=(r.saldo!=null?Number(r.saldo):ent-sai)||0;
+    catTot[cat].ent+=ent; catTot[cat].sai+=sai; catTot[cat].sal+=sal;
+    const fn=(r.fornecedor||'—').trim()||'—';
+    if(!fmap[fn]){fmap[fn]={}; cats.forEach(c=>fmap[fn][c.key]=0);}
+    fmap[fn][cat]+=sal;
+  });
+
+  const cls=v=>v>0?'wrn':v<0?'dng':'ok';
+  const tag=v=>{const n=Number(v)||0;const c=n<0?'dng':n>0?'wrn':'neu';return`<span class="tag ${c}">${n>0?'+':''}${n}</span>`;};
+
+  // Cards: uma por categoria + total geral
+  const totGeral=cats.reduce((s,c)=>s+catTot[c.key].sal,0);
+  let cards=cats.map(c=>{
+    const t=catTot[c.key];
+    return`<div class="kcard ${cls(t.sal)}"><div class="klbl">${c.key}</div><div class="kval">${t.sal}</div><div class="ksub">enviou ${t.ent} · confirmou ${t.sai}</div></div>`;
+  }).join('');
+  cards+=`<div class="kcard inf"><div class="klbl">Total a devolver</div><div class="kval">${totGeral}</div><div class="ksub">soma dos saldos</div></div>`;
+  $('sfdCards').innerHTML=cards;
+
+  // Tabela por item
+  $('sfdItemCnt').textContent=cats.length+' itens';
+  $('sfdItemBody').innerHTML=cats.map(c=>{
+    const t=catTot[c.key];
+    return`<tr><td>${c.key}</td><td style="text-align:center">${t.ent}</td><td style="text-align:center">${t.sai}</td><td style="text-align:center">${tag(t.sal)}</td></tr>`;
+  }).join('');
+
+  // Tabela por fornecedor (só com saldo != 0 em alguma categoria), ordem por total desc
+  $('sfdFornHead').innerHTML='<th>Fornecedor</th>'+cats.map(c=>`<th style="text-align:center">${c.key}</th>`).join('')+'<th style="text-align:center">Total</th>';
+  const linhas=Object.keys(fmap).map(fn=>{
+    const tot=cats.reduce((s,c)=>s+(fmap[fn][c.key]||0),0);
+    return {fn,vals:fmap[fn],tot};
+  }).filter(l=>cats.some(c=>(l.vals[c.key]||0)!==0)).sort((a,b)=>b.tot-a.tot);
+  $('sfdFornCnt').textContent=linhas.length+' fornecedores';
+  $('sfdFornBody').innerHTML=linhas.length?linhas.map(l=>{
+    const fn=l.fn.length>32?l.fn.substring(0,32)+'…':l.fn;
+    return`<tr><td title="${l.fn}">${fn}</td>`+cats.map(c=>`<td style="text-align:center">${tag(l.vals[c.key]||0)}</td>`).join('')+`<td style="text-align:center"><strong>${l.tot}</strong></td></tr>`;
+  }).join(''):`<tr><td colspan="${cats.length+2}"><div class="empty">📭 Sem saldo registrado para estes itens</div></td></tr>`;
 }
 
 function renderSfTbl(){

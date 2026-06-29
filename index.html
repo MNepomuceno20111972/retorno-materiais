@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--bg:#0d0f14;--bg2:#141720;--bg3:#1c2030;--bdr:#2a2f45;--bdr2:#3a4060;--acc:#4f8ef7;--acc2:#6fa3ff;--grn:#22c55e;--red:#ef4444;--amb:#f59e0b;--txt:#e8eaf0;--mut:#8892aa;--card:#161924;--r:8px;--rl:12px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -121,6 +122,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="ni" id="nav-tri" onclick="go('tri')">🗂️ <span>Triagem</span><span class="nc" id="navTriCnt">—</span></div>
   <div class="ni" id="nav-sf" onclick="go('sf')">🚚 <span>Saída Fornecedores</span><span class="nc" id="navSfCnt">—</span></div>
   <div class="ni" id="nav-sfdash" onclick="go('sfdash')">📦 <span>Saldo Fornecedores</span></div>
+  <div class="ni" id="nav-pvx" onclick="go('pvx')">📊 <span>Produtividade → ProdutiVix</span></div>
   <div class="nlbl">Sistema</div>
   <div class="ni" id="nav-exp" onclick="go('exp')">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-cfg" onclick="go('cfg')">⚙️ <span>Configuração</span></div>
@@ -390,8 +392,17 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <select id="sfFMat" onchange="filterSf()">
       <option value="">Todos materiais</option>
       <option>PALETE PBR</option><option>PALETE CHEP</option><option>PALETE DESCARTAVEL</option>
-      <option>CAIXA M</option><option>CAIXA G</option><option>CAIXA P</option>
-      <option>CARADORI</option><option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
+      <option>Caixa Plástica Modelo - P (Uva / Morango)</option>
+      <option>Caixa Plástica Modelo - P (Mamão / Manga)</option>
+      <option>Caixa Plástica Modelo - M (Banana)</option>
+      <option>Caixa Plástica Modelo - M (Roça)</option>
+      <option>Caixa Plástica Modelo - M (Bandejão)</option>
+      <option>Caixa Plástica Modelo - M (Abacaxi)</option>
+      <option>Caixa Plástica Modelo - M (Bandejão Lichia)</option>
+      <option>Caixa Plástica Modelo - G (Verde)</option>
+      <option>Caixa Plástica Modelo - G</option>
+      <option>Caixa Plástica Modelo Caradori</option>
+      <option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
       <option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
       <option>CX DE FORNECEDOR</option><option>CAIXA BIMBO</option><option>CARRINHO DE FLOR</option>
       <option>CESTOS</option><option>EURO</option><option>EURO CHEP</option>
@@ -458,6 +469,47 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- MIGRAÇÃO PRODUTIVIX -->
+<div class="pg" id="pg-pvx">
+  <div class="tbox">
+    <div class="thead2"><span class="ttit">📊 Migração de produtividade para o ProdutiVix</span></div>
+    <div style="padding:14px 16px;font-size:13px;color:var(--text2,#9fb3c8);line-height:1.6">
+      Envia o volume por colaborador para o ProdutiVix. Só registros com data <strong>≥ 01/07/2026</strong>.
+      Recebimento e Expedição não entram (lançados direto no ProdutiVix).
+      A migração é idempotente: rodar de novo não duplica.
+      <br><br>
+      <strong>Sempre pré-visualize antes de confirmar.</strong> A confirmação grava direto na base do ProdutiVix.
+    </div>
+    <div style="padding:0 16px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn" onclick="pvxPreview()">🔍 Pré-visualizar</button>
+      <button class="btn ok" id="pvxCommitBtn" style="display:none" onclick="pvxCommit()">✅ Confirmar migração</button>
+      <span id="pvxStatus" style="font-size:12px;color:var(--text2,#9fb3c8)"></span>
+    </div>
+  </div>
+  <div class="kgrid" id="pvxCards" style="grid-template-columns:repeat(4,1fr);display:none"></div>
+  <div class="tbox" id="pvxPrevBox" style="display:none">
+    <div class="thead2"><span class="ttit">Pré-visualização por colaborador</span><span class="tcnt" id="pvxPrevCnt"></span></div>
+    <div class="tscroll"><table>
+      <thead><tr>
+        <th>Colaborador</th><th>Matrícula PVX</th>
+        <th style="text-align:center">Conferência</th>
+        <th style="text-align:center">Triagem</th>
+        <th style="text-align:center">Movimentação</th>
+        <th style="text-align:center">Total volume</th>
+        <th style="text-align:center">Apont.</th>
+      </tr></thead>
+      <tbody id="pvxPrevBody"></tbody>
+    </table></div>
+  </div>
+  <div class="tbox" id="pvxUnmatchBox" style="display:none">
+    <div class="thead2"><span class="ttit">⚠️ Nomes sem matrícula no ProdutiVix (volume não migra)</span><span class="tcnt" id="pvxUnmatchCnt"></span></div>
+    <div class="tscroll"><table>
+      <thead><tr><th>Nome no GODMODE</th><th style="text-align:center">Apont. perdidos</th><th style="text-align:center">Volume perdido</th></tr></thead>
+      <tbody id="pvxUnmatchBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
 </main>
 </div>
 
@@ -479,8 +531,17 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <select id="sfMMat">
             <option value="">Selecione o material...</option>
             <option>PALETE PBR</option><option>PALETE CHEP</option><option>PALETE DESCARTAVEL</option>
-            <option>CAIXA M</option><option>CAIXA G</option><option>CAIXA P</option>
-            <option>CARADORI</option><option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
+            <option>Caixa Plástica Modelo - P (Uva / Morango)</option>
+            <option>Caixa Plástica Modelo - P (Mamão / Manga)</option>
+            <option>Caixa Plástica Modelo - M (Banana)</option>
+            <option>Caixa Plástica Modelo - M (Roça)</option>
+            <option>Caixa Plástica Modelo - M (Bandejão)</option>
+            <option>Caixa Plástica Modelo - M (Abacaxi)</option>
+            <option>Caixa Plástica Modelo - M (Bandejão Lichia)</option>
+            <option>Caixa Plástica Modelo - G (Verde)</option>
+            <option>Caixa Plástica Modelo - G</option>
+            <option>Caixa Plástica Modelo Caradori</option>
+            <option>CHAPATEX</option><option>GAIOLA MADEIRA</option>
             <option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
             <option>CX DE FORNECEDOR</option><option>CAIXA BIMBO</option><option>CARRINHO DE FLOR</option>
             <option>CESTOS</option><option>EURO</option><option>EURO CHEP</option>
@@ -620,8 +681,7 @@ const LOJAS=LOJAS_DATA.map(l=>`${l.num} - ${l.nome}`).sort((a,b)=>Number(a.split
 
 // BASE COLABORADORES — Quadro_Equipe_Logistica_Reversa.xlsx
 const COLABORADORES=[
-  {mat:'TSI',nome:'Colaborador TSI',cargo:'PRESTADOR DE SERVIÇO (TSI)',turno:'TSI - Terceiro'},
-  {mat:'02201960',nome:'ELIENE LIMA OLIVEIRA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'},
+  {mat:'00000000',nome:'Colaborador TSI',cargo:'Auxiliar de Logística',turno:'Sem Turno'},
   {mat:'01790206',nome:'ALBERTINO DOS SANTOS PRETO',cargo:'OPERADOR DE LOGÍSTICA II',turno:'LOG - Reversa Equipe'},
   {mat:'02201073',nome:'ANTONIO JOSE SILVA DE OLIVEIRA',cargo:'AUXILIAR DE HIGIENIZAÇÃO II',turno:'LOG Reversa Equipe T2'},
   {mat:'02201061',nome:'CESAR VINICIOS THOMAZ ALVES DOS SANTOS',cargo:'CONFERENTE I',turno:'LOG - Reversa Equipe'},
@@ -632,10 +692,8 @@ const COLABORADORES=[
   {mat:'02201898',nome:'FAGNER JUNIO DOS SANTOS',cargo:'AUXILIAR DE LOGÍSTICA I',turno:'LOG Reversa Equipe T2'},
   {mat:'03101008',nome:'FLAVIO FERNANDES DOS SANTOS',cargo:'ASSISTENTE ADMINISTRATIVO',turno:'LOG Reversa Equipe T3'},
   {mat:'02200624',nome:'GABRIEL DOS SANTOS SILVA',cargo:'AUXILIAR DE LOGÍSTICA II',turno:'LOG Reversa Equipe T3'},
-  {mat:'02200533',nome:'GERIVALDO DA SILVA TEIXEIRA',cargo:'SUPERVISOR DE LOGÍSTICA JÚNIOR',turno:'LOG Reversa Superv T3'},
   {mat:'01790205',nome:'GILDEVALDO ARAUJO DA CONCEICAO',cargo:'OPERADOR DE LOGÍSTICA II',turno:'LOG - Reversa Equipe'},
   {mat:'02201798',nome:'GUSTAVO FRANQUILINO VICENTE',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'},
-  {mat:'03190595',nome:'HOBEDE PINHEIRO SOARES',cargo:'SUPERVISOR DE LOGÍSTICA JÚNIOR',turno:'LOG - Reversa Superv'},
   {mat:'02201826',nome:'JERONIMO CASSIMIRO CORREIA',cargo:'AUXILIAR DE LOGÍSTICA I',turno:'LOG - Reversa Equipe'},
   {mat:'02201661',nome:'JOAO VICTOR DE SOUZA MELO',cargo:'AUXILIAR DE HIGIENIZAÇÃO',turno:'LOG Reversa Equipe T3'},
   {mat:'02200134',nome:'JOAQUIM DE SOUZA PIRES',cargo:'AUXILIAR DE LOGÍSTICA II',turno:'LOG - Reversa Equipe'},
@@ -664,7 +722,8 @@ const COLABORADORES=[
   {mat:'03190611',nome:'VALMIR STOCCO MARTINS',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG - Reversa Equipe'},
   {mat:'02201729',nome:'WELLINGTON DE SOUZA FRANCISCO',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T3'},
   {mat:'03101642',nome:'WILLIAM MEDINA DOS SANTOS',cargo:'OPERADOR DE EMPILHADEIRA SÊNIOR',turno:'LOG - Reversa Equipe'},
-  {mat:'02201867',nome:'YAGO HENRIQUE LOPES OLIVEIRA',cargo:'AUXILIAR DE LOGÍSTICA I',turno:'LOG Reversa Equipe T2'}
+  {mat:'02201867',nome:'YAGO HENRIQUE LOPES OLIVEIRA',cargo:'AUXILIAR DE LOGÍSTICA I',turno:'LOG Reversa Equipe T2'},
+  {mat:'02201960',nome:'ELIENE LIMA OLIVEIRA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'}
 ];
 const OPS=COLABORADORES.map(c=>c.nome).sort();
 
@@ -756,6 +815,7 @@ function go(p){
   if(p==='dash'){renderDash()}
   if(p==='sf'){SF_FILT=[...SF_ALL];renderSfTbl()}
   if(p==='sfdash'){renderSfDash()}
+  if(p==='pvx'){pvxReset()}
 }
 
 // STATUS
@@ -1529,6 +1589,149 @@ function srtSf(field){
     return sfSortD==='asc'?(va>vb?1:-1):(va<vb?1:-1);
   });
   renderSfTbl();
+}
+
+// ===== MIGRAÇÃO PRODUTIVIX =====
+const PVX_SUPA_URL='https://qkieltckdfhafvtadqmm.supabase.co';
+const PVX_SUPA_KEY='sb_publishable_G3u5u-78Uxl0YHgPLbZbNA_rVkHNSjQ';
+const PVX_CUTOFF='2026-07-01';
+let _pvxClient=null, _pvxCands=null;
+
+function pvxSupa(){
+  if(_pvxClient) return _pvxClient;
+  if(!window.supabase||!window.supabase.createClient) return null;
+  _pvxClient=window.supabase.createClient(PVX_SUPA_URL,PVX_SUPA_KEY);
+  return _pvxClient;
+}
+// matrícula: tira zeros à esquerda; tudo-zero vira '0'; não-numérico em maiúsculo
+function pvxNormMat(m){m=String(m==null?'':m).trim();return (/^\d+$/.test(m))?(m.replace(/^0+/,'')||'0'):m.toUpperCase();}
+const _godNomeMat={}; COLABORADORES.forEach(c=>{_godNomeMat[(c.nome||'').trim().toUpperCase()]=pvxNormMat(c.mat);});
+function pvxMatDoNome(nome){return _godNomeMat[(nome||'').trim().toUpperCase()]||null;}
+
+function pvxReset(){
+  _pvxCands=null;
+  $('pvxStatus').textContent='';
+  $('pvxCommitBtn').style.display='none';
+  $('pvxCards').style.display='none';
+  $('pvxPrevBox').style.display='none';
+  $('pvxUnmatchBox').style.display='none';
+}
+
+// Lê os 3 nós do Firebase e monta os candidatos a apontamento
+async function pvxBuildCandidates(){
+  const cutoff=PVX_CUTOFF, dOf=v=>String(v||'').substring(0,10), cand=[];
+  // RETORNO: conferente -> OP-CONF-01, volume = soma qtd_fisica por NF/evento
+  const ret=(await DB.ref('retorno_app/retorno_materiais').once('value')).val()||{};
+  const evt={};
+  Object.values(ret).forEach(r=>{
+    const d=dOf(r.data); if(!d||d<cutoff) return;
+    const cf=(r.conferente||'').trim(); if(!cf) return;
+    const k=['RET',d,r.loja||'',r.nota_fiscal||'',cf].join('|');
+    if(!evt[k]) evt[k]={nome:cf,data:d,vol:0};
+    evt[k].vol+=Number(r.qtd_fisica)||0;
+  });
+  Object.entries(evt).forEach(([k,e])=>{ if(e.vol>0) cand.push({nomeGod:e.nome,atCod:'OP-CONF-01',grupo:'conf',volume:e.vol,data:e.data,origemKey:k}); });
+  // TRIAGEM: triagem -> OP-TRI-01, movimentação -> OP-MOV-01, volume = qtd_caixas
+  const tri=(await DB.ref('retorno_app/triagem').once('value')).val()||{};
+  Object.entries(tri).forEach(([id,t])=>{
+    const d=dOf(t.data_triagem||t.data_recebimento); if(!d||d<cutoff) return;
+    const v=Number(t.qtd_caixas)||0; if(v<=0) return;
+    const ot=(t.operador_triagem||'').trim(), om=(t.operador_movimentacao||'').trim();
+    if(ot) cand.push({nomeGod:ot,atCod:'OP-TRI-01',grupo:'tri',volume:v,data:d,origemKey:'TRI|TRI|'+id});
+    if(om) cand.push({nomeGod:om,atCod:'OP-MOV-01',grupo:'mov',volume:v,data:d,origemKey:'TRI|MOV|'+id});
+  });
+  // SF: movimentação -> OP-MOV-01, conferente -> OP-CONF-01, volume = saida
+  const sf=(await DB.ref('retorno_app/saida_fornecedores').once('value')).val()||{};
+  Object.entries(sf).forEach(([id,r])=>{
+    const d=dOf(r.data); if(!d||d<cutoff) return;
+    const v=Number(r.saida)||0; if(v<=0) return;
+    const om=(r.op_movimentacao||'').trim(), cf=(r.conferente||'').trim();
+    if(om) cand.push({nomeGod:om,atCod:'OP-MOV-01',grupo:'mov',volume:v,data:d,origemKey:'SF|MOV|'+id});
+    if(cf) cand.push({nomeGod:cf,atCod:'OP-CONF-01',grupo:'conf',volume:v,data:d,origemKey:'SF|CONF|'+id});
+  });
+  return cand;
+}
+
+async function pvxPreview(){
+  if(!DB){alert('Firebase não conectado.');return;}
+  const sup=pvxSupa(); if(!sup){alert('SDK do Supabase não carregou. Recarregue a página.');return;}
+  $('pvxStatus').textContent='Lendo registros e o ProdutiVix...';
+  try{
+    const cand=await pvxBuildCandidates();
+    const {data,error}=await sup.from('dados').select('valor').eq('chave','produtivix_v6').maybeSingle();
+    if(error) throw error;
+    const S=data&&data.valor?JSON.parse(data.valor):{colaboradores:[],apontamentos:[]};
+    const pvxByNorm={}; (S.colaboradores||[]).forEach(c=>{pvxByNorm[pvxNormMat(c.mat)]=c.mat;});
+    const jaMig=new Set((S.apontamentos||[]).filter(a=>a.origemKey).map(a=>a.origemKey));
+    const porCol={}, unmatch={}; let totNovos=0, totVol=0;
+    cand.forEach(c=>{
+      if(jaMig.has(c.origemKey)) return;
+      const norm=pvxMatDoNome(c.nomeGod), pvxMat=norm?pvxByNorm[norm]:null;
+      if(!pvxMat){ if(!unmatch[c.nomeGod])unmatch[c.nomeGod]={ap:0,vol:0}; unmatch[c.nomeGod].ap++; unmatch[c.nomeGod].vol+=c.volume; return; }
+      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,conf:0,tri:0,mov:0,ap:0,vol:0};
+      porCol[pvxMat][c.grupo]+=c.volume; porCol[pvxMat].ap++; porCol[pvxMat].vol+=c.volume;
+      totNovos++; totVol+=c.volume;
+    });
+    _pvxCands={cand,porCol,unmatch,totNovos,totVol};
+    pvxRenderPreview();
+    $('pvxStatus').textContent='';
+    $('pvxCommitBtn').style.display=totNovos>0?'inline-block':'none';
+  }catch(e){ console.error(e); $('pvxStatus').textContent='Erro: '+(e.message||e); }
+}
+
+function pvxRenderPreview(){
+  const {porCol,unmatch,totNovos,totVol}=_pvxCands;
+  const cols=Object.values(porCol).sort((a,b)=>b.vol-a.vol);
+  const nUn=Object.values(unmatch).reduce((s,u)=>s+u.ap,0);
+  $('pvxCards').style.display='grid';
+  $('pvxCards').innerHTML=
+    `<div class="kcard ok"><div class="klbl">Apontamentos novos</div><div class="kval">${totNovos}</div><div class="ksub">a criar no ProdutiVix</div></div>`
+   +`<div class="kcard inf"><div class="klbl">Volume total</div><div class="kval">${totVol}</div><div class="ksub">soma migrada</div></div>`
+   +`<div class="kcard inf"><div class="klbl">Colaboradores</div><div class="kval">${cols.length}</div><div class="ksub">recebem volume</div></div>`
+   +`<div class="kcard ${nUn?'dng':'ok'}"><div class="klbl">Sem matrícula</div><div class="kval">${nUn}</div><div class="ksub">volume perdido</div></div>`;
+  $('pvxPrevBox').style.display='block';
+  $('pvxPrevCnt').textContent=cols.length+' colaboradores';
+  $('pvxPrevBody').innerHTML=cols.length?cols.map(c=>
+    `<tr><td title="${c.nome}">${c.nome.length>28?c.nome.substring(0,28)+'…':c.nome}</td><td>${c.mat}</td>`
+   +`<td style="text-align:center">${c.conf||'—'}</td><td style="text-align:center">${c.tri||'—'}</td><td style="text-align:center">${c.mov||'—'}</td>`
+   +`<td style="text-align:center"><strong>${c.vol}</strong></td><td style="text-align:center">${c.ap}</td></tr>`
+  ).join(''):'<tr><td colspan="7"><div class="empty">Nada novo a migrar</div></td></tr>';
+  const uns=Object.entries(unmatch).sort((a,b)=>b[1].vol-a[1].vol);
+  $('pvxUnmatchBox').style.display=uns.length?'block':'none';
+  $('pvxUnmatchCnt').textContent=uns.length+' nomes';
+  $('pvxUnmatchBody').innerHTML=uns.map(([n,u])=>`<tr><td>${n}</td><td style="text-align:center">${u.ap}</td><td style="text-align:center">${u.vol}</td></tr>`).join('');
+}
+
+async function pvxCommit(){
+  if(!_pvxCands||_pvxCands.totNovos<=0){alert('Pré-visualize primeiro.');return;}
+  if(!confirm('Confirmar a migração de '+_pvxCands.totNovos+' apontamentos para o ProdutiVix? Grava direto na base de produção.'))return;
+  const sup=pvxSupa(); if(!sup){alert('Supabase indisponível.');return;}
+  $('pvxStatus').textContent='Gravando no ProdutiVix...';
+  $('pvxCommitBtn').disabled=true;
+  try{
+    const {data,error}=await sup.from('dados').select('valor').eq('chave','produtivix_v6').maybeSingle();
+    if(error) throw error;
+    const S=data&&data.valor?JSON.parse(data.valor):null;
+    if(!S) throw new Error('Base do ProdutiVix vazia ou inacessível.');
+    if(!Array.isArray(S.apontamentos))S.apontamentos=[];
+    if(!S.nId)S.nId=1;
+    const pvxByNorm={}; (S.colaboradores||[]).forEach(c=>{pvxByNorm[pvxNormMat(c.mat)]=c.mat;});
+    const jaMig=new Set(S.apontamentos.filter(a=>a.origemKey).map(a=>a.origemKey));
+    const nowIso=new Date().toISOString(); let criados=0;
+    _pvxCands.cand.forEach(c=>{
+      if(jaMig.has(c.origemKey))return;
+      const norm=pvxMatDoNome(c.nomeGod), pvxMat=norm?pvxByNorm[norm]:null;
+      if(!pvxMat)return;
+      const id='APT-'+String(S.nId++).padStart(5,'0');
+      S.apontamentos.unshift({id,mat:pvxMat,atCod:c.atCod,data:c.data,status:'Finalizada',volume:c.volume,ts:nowIso,tsFim:nowIso,origem:'GODMODE',origemKey:c.origemKey});
+      jaMig.add(c.origemKey); criados++;
+    });
+    const {error:e2}=await sup.from('dados').upsert({chave:'produtivix_v6',valor:JSON.stringify(S)},{onConflict:'chave'});
+    if(e2) throw e2;
+    $('pvxStatus').textContent='✅ '+criados+' apontamentos migrados.';
+    _pvxCands=null; $('pvxCommitBtn').style.display='none';
+  }catch(e){ console.error(e); $('pvxStatus').textContent='Erro ao gravar: '+(e.message||e); }
+  finally{ $('pvxCommitBtn').disabled=false; }
 }
 
 // ===== DASHBOARD SALDO FORNECEDORES =====

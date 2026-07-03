@@ -1592,16 +1592,34 @@ function srtSf(field){
 }
 
 // ===== MIGRAÇÃO PRODUTIVIX =====
-const PVX_SUPA_URL='https://qkieltckdfhafvtadqmm.supabase.co';
-const PVX_SUPA_KEY='sb_publishable_G3u5u-78Uxl0YHgPLbZbNA_rVkHNSjQ';
+const PVX_CONFIG={
+  apiKey:'AIzaSyCxlvKWd03OB1MyTPmLra2YvUrorBJcNRI',
+  authDomain:'controle-de-paletes-c76d5.firebaseapp.com',
+  databaseURL:'https://controle-de-paletes-c76d5-default-rtdb.firebaseio.com',
+  projectId:'controle-de-paletes-c76d5'
+};
+const PVX_NODE='produtivix_v6';
 const PVX_CUTOFF='2026-07-01';
-let _pvxClient=null, _pvxCands=null;
+let PVX_DB=null, _pvxAuth=null, _pvxCands=null;
 
-function pvxSupa(){
-  if(_pvxClient) return _pvxClient;
-  if(!window.supabase||!window.supabase.createClient) return null;
-  _pvxClient=window.supabase.createClient(PVX_SUPA_URL,PVX_SUPA_KEY);
-  return _pvxClient;
+// App Firebase secundário isolado para o ProdutiVix + login anônimo (mesmo padrão do PaletCD)
+function pvxInit(){
+  if(_pvxAuth) return _pvxAuth;
+  const app=firebase.apps.find(a=>a.name==='produtivix')
+          ||firebase.initializeApp(PVX_CONFIG,'produtivix');
+  PVX_DB=app.database();
+  _pvxAuth=app.auth().signInAnonymously()
+    .catch(e=>{_pvxAuth=null;throw new Error('Auth ProdutiVix falhou: '+e.message);});
+  return _pvxAuth;
+}
+async function pvxLoad(){
+  await pvxInit();
+  const snap=await PVX_DB.ref(PVX_NODE).once('value');
+  return snap.val();
+}
+async function pvxSave(S){
+  await pvxInit();
+  await PVX_DB.ref(PVX_NODE).set(S);
 }
 // matrícula: tira zeros à esquerda; tudo-zero vira '0'; não-numérico em maiúsculo
 function pvxNormMat(m){m=String(m==null?'':m).trim();return (/^\d+$/.test(m))?(m.replace(/^0+/,'')||'0'):m.toUpperCase();}
@@ -1654,13 +1672,10 @@ async function pvxBuildCandidates(){
 
 async function pvxPreview(){
   if(!DB){alert('Firebase não conectado.');return;}
-  const sup=pvxSupa(); if(!sup){alert('SDK do Supabase não carregou. Recarregue a página.');return;}
   $('pvxStatus').textContent='Lendo registros e o ProdutiVix...';
   try{
     const cand=await pvxBuildCandidates();
-    const {data,error}=await sup.from('dados').select('valor').eq('chave','produtivix_v6').maybeSingle();
-    if(error) throw error;
-    const S=data&&data.valor?JSON.parse(data.valor):{colaboradores:[],apontamentos:[]};
+    const S=await pvxLoad()||{colaboradores:[],apontamentos:[]};
     const pvxByNorm={}; (S.colaboradores||[]).forEach(c=>{pvxByNorm[pvxNormMat(c.mat)]=c.mat;});
     const jaMig=new Set((S.apontamentos||[]).filter(a=>a.origemKey).map(a=>a.origemKey));
     const porCol={}, unmatch={}; let totNovos=0, totVol=0;
@@ -1705,13 +1720,10 @@ function pvxRenderPreview(){
 async function pvxCommit(){
   if(!_pvxCands||_pvxCands.totNovos<=0){alert('Pré-visualize primeiro.');return;}
   if(!confirm('Confirmar a migração de '+_pvxCands.totNovos+' apontamentos para o ProdutiVix? Grava direto na base de produção.'))return;
-  const sup=pvxSupa(); if(!sup){alert('Supabase indisponível.');return;}
   $('pvxStatus').textContent='Gravando no ProdutiVix...';
   $('pvxCommitBtn').disabled=true;
   try{
-    const {data,error}=await sup.from('dados').select('valor').eq('chave','produtivix_v6').maybeSingle();
-    if(error) throw error;
-    const S=data&&data.valor?JSON.parse(data.valor):null;
+    const S=await pvxLoad();
     if(!S) throw new Error('Base do ProdutiVix vazia ou inacessível.');
     if(!Array.isArray(S.apontamentos))S.apontamentos=[];
     if(!S.nId)S.nId=1;
@@ -1726,8 +1738,7 @@ async function pvxCommit(){
       S.apontamentos.unshift({id,mat:pvxMat,atCod:c.atCod,data:c.data,status:'Finalizada',volume:c.volume,ts:nowIso,tsFim:nowIso,origem:'GODMODE',origemKey:c.origemKey});
       jaMig.add(c.origemKey); criados++;
     });
-    const {error:e2}=await sup.from('dados').upsert({chave:'produtivix_v6',valor:JSON.stringify(S)},{onConflict:'chave'});
-    if(e2) throw e2;
+    await pvxSave(S);
     $('pvxStatus').textContent='✅ '+criados+' apontamentos migrados.';
     _pvxCands=null; $('pvxCommitBtn').style.display='none';
   }catch(e){ console.error(e); $('pvxStatus').textContent='Erro ao gravar: '+(e.message||e); }

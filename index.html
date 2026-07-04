@@ -475,7 +475,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="thead2"><span class="ttit">📊 Migração de produtividade para o ProdutiVix</span></div>
     <div style="padding:14px 16px;font-size:13px;color:var(--text2,#9fb3c8);line-height:1.6">
       Envia o volume por colaborador para o ProdutiVix. Só registros com data <strong>≥ 01/07/2026</strong>.
-      Recebimento e Expedição não entram (lançados direto no ProdutiVix).
+      Recebimento, Triagem, Movimentação, Conferência e Expedição entram, por colaborador selecionado.
       A migração é idempotente: rodar de novo não duplica.
       <br><br>
       <strong>Sempre pré-visualize antes de confirmar.</strong> A confirmação grava direto na base do ProdutiVix.
@@ -492,9 +492,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="tscroll"><table>
       <thead><tr>
         <th>Colaborador</th><th>Matrícula PVX</th>
+        <th style="text-align:center">Recebimento</th>
         <th style="text-align:center">Conferência</th>
         <th style="text-align:center">Triagem</th>
         <th style="text-align:center">Movimentação</th>
+        <th style="text-align:center">Expedição</th>
         <th style="text-align:center">Total volume</th>
         <th style="text-align:center">Apont.</th>
       </tr></thead>
@@ -1638,17 +1640,22 @@ function pvxReset(){
 // Lê os 3 nós do Firebase e monta os candidatos a apontamento
 async function pvxBuildCandidates(){
   const cutoff=PVX_CUTOFF, dOf=v=>String(v||'').substring(0,10), cand=[];
-  // RETORNO: conferente -> OP-CONF-01, volume = soma qtd_fisica por NF/evento
+  // RETORNO: operador_carga -> OP-REC-02, conferente -> OP-CONF-01, volume = soma qtd_fisica por retorno (data/loja/NF)
   const ret=(await DB.ref('retorno_app/retorno_materiais').once('value')).val()||{};
   const evt={};
   Object.values(ret).forEach(r=>{
     const d=dOf(r.data); if(!d||d<cutoff) return;
-    const cf=(r.conferente||'').trim(); if(!cf) return;
-    const k=['RET',d,r.loja||'',r.nota_fiscal||'',cf].join('|');
-    if(!evt[k]) evt[k]={nome:cf,data:d,vol:0};
+    const k=['RET',d,r.loja||'',r.nota_fiscal||''].join('|');
+    if(!evt[k]) evt[k]={data:d,op:'',cf:'',vol:0};
     evt[k].vol+=Number(r.qtd_fisica)||0;
+    if(!evt[k].op&&(r.operador_carga||'').trim()) evt[k].op=(r.operador_carga||'').trim();
+    if(!evt[k].cf&&(r.conferente||'').trim()) evt[k].cf=(r.conferente||'').trim();
   });
-  Object.entries(evt).forEach(([k,e])=>{ if(e.vol>0) cand.push({nomeGod:e.nome,atCod:'OP-CONF-01',grupo:'conf',volume:e.vol,data:e.data,origemKey:k}); });
+  Object.entries(evt).forEach(([k,e])=>{
+    if(e.vol<=0) return;
+    if(e.op) cand.push({nomeGod:e.op,atCod:'OP-REC-02',grupo:'rec',volume:e.vol,data:e.data,origemKey:k+'|REC'});
+    if(e.cf) cand.push({nomeGod:e.cf,atCod:'OP-CONF-01',grupo:'conf',volume:e.vol,data:e.data,origemKey:k+'|CONF'});
+  });
   // TRIAGEM: triagem -> OP-TRI-01, movimentação -> OP-MOV-01, volume = qtd_caixas
   const tri=(await DB.ref('retorno_app/triagem').once('value')).val()||{};
   Object.entries(tri).forEach(([id,t])=>{
@@ -1663,7 +1670,8 @@ async function pvxBuildCandidates(){
   Object.entries(sf).forEach(([id,r])=>{
     const d=dOf(r.data); if(!d||d<cutoff) return;
     const v=Number(r.saida)||0; if(v<=0) return;
-    const om=(r.op_movimentacao||'').trim(), cf=(r.conferente||'').trim();
+    const oe=(r.op_expedicao||'').trim(), om=(r.op_movimentacao||'').trim(), cf=(r.conferente||'').trim();
+    if(oe) cand.push({nomeGod:oe,atCod:'OP-EXP-02',grupo:'exp',volume:v,data:d,origemKey:'SF|EXP|'+id});
     if(om) cand.push({nomeGod:om,atCod:'OP-MOV-01',grupo:'mov',volume:v,data:d,origemKey:'SF|MOV|'+id});
     if(cf) cand.push({nomeGod:cf,atCod:'OP-CONF-01',grupo:'conf',volume:v,data:d,origemKey:'SF|CONF|'+id});
   });
@@ -1683,7 +1691,7 @@ async function pvxPreview(){
       if(jaMig.has(c.origemKey)) return;
       const norm=pvxMatDoNome(c.nomeGod), pvxMat=norm?pvxByNorm[norm]:null;
       if(!pvxMat){ if(!unmatch[c.nomeGod])unmatch[c.nomeGod]={ap:0,vol:0}; unmatch[c.nomeGod].ap++; unmatch[c.nomeGod].vol+=c.volume; return; }
-      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,conf:0,tri:0,mov:0,ap:0,vol:0};
+      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,rec:0,conf:0,tri:0,mov:0,exp:0,ap:0,vol:0};
       porCol[pvxMat][c.grupo]+=c.volume; porCol[pvxMat].ap++; porCol[pvxMat].vol+=c.volume;
       totNovos++; totVol+=c.volume;
     });
@@ -1708,9 +1716,9 @@ function pvxRenderPreview(){
   $('pvxPrevCnt').textContent=cols.length+' colaboradores';
   $('pvxPrevBody').innerHTML=cols.length?cols.map(c=>
     `<tr><td title="${c.nome}">${c.nome.length>28?c.nome.substring(0,28)+'…':c.nome}</td><td>${c.mat}</td>`
-   +`<td style="text-align:center">${c.conf||'—'}</td><td style="text-align:center">${c.tri||'—'}</td><td style="text-align:center">${c.mov||'—'}</td>`
+   +`<td style="text-align:center">${c.rec||'—'}</td><td style="text-align:center">${c.conf||'—'}</td><td style="text-align:center">${c.tri||'—'}</td><td style="text-align:center">${c.mov||'—'}</td><td style="text-align:center">${c.exp||'—'}</td>`
    +`<td style="text-align:center"><strong>${c.vol}</strong></td><td style="text-align:center">${c.ap}</td></tr>`
-  ).join(''):'<tr><td colspan="7"><div class="empty">Nada novo a migrar</div></td></tr>';
+  ).join(''):'<tr><td colspan="9"><div class="empty">Nada novo a migrar</div></td></tr>';
   const uns=Object.entries(unmatch).sort((a,b)=>b[1].vol-a[1].vol);
   $('pvxUnmatchBox').style.display=uns.length?'block':'none';
   $('pvxUnmatchCnt').textContent=uns.length+' nomes';

@@ -462,8 +462,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="tscroll"><table>
       <thead><tr>
         <th>Item</th>
-        <th style="text-align:center">Entrada (saiu do CD)</th>
-        <th style="text-align:center">Saída (confirmado)</th>
+        <th style="text-align:center">Entrada (retorno)</th>
+        <th style="text-align:center">Saída (devolvido)</th>
         <th style="text-align:center">Saldo</th>
       </tr></thead>
       <tbody id="sfdItemBody"></tbody>
@@ -695,6 +695,7 @@ const COLABORADORES=[
   {mat:'00000000',nome:'Colaborador TSI',cargo:'Auxiliar de Logística',turno:'Sem Turno'},
   {mat:'01790206',nome:'ALBERTINO DOS SANTOS PRETO',cargo:'OPERADOR DE LOGÍSTICA II',turno:'LOG - Reversa Equipe'},
   {mat:'02201073',nome:'ANTONIO JOSE SILVA DE OLIVEIRA',cargo:'AUXILIAR DE HIGIENIZAÇÃO II',turno:'LOG Reversa Equipe T2'},
+  {mat:'02201957',nome:'BRUNO ANDREO CARDOSO DA SILVA',cargo:'AUXILIAR DE HIGIENIZAÇÃO',turno:'LOG Reversa Equipe T3'},
   {mat:'02201061',nome:'CESAR VINICIOS THOMAZ ALVES DOS SANTOS',cargo:'CONFERENTE I',turno:'LOG - Reversa Equipe'},
   {mat:'02201736',nome:'DANIEL RODRIGUES DA SILVA',cargo:'AUXILIAR DE HIGIENIZAÇÃO',turno:'LOG Reversa Equipe T3'},
   {mat:'02201704',nome:'DIEGO DE MELO CARDOSO',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'},
@@ -1804,16 +1805,23 @@ function renderSfDash(){
   const catTot={}; cats.forEach(c=>catTot[c.key]={ent:0,sai:0,sal:0});
   const fmap={};   // fornecedor -> {cat:saldo}
 
+  // ENTRADA = físico recebido no retorno de materiais (por categoria)
+  (ALL||[]).forEach(r=>{
+    const cat=matToCat[(r.material||'').toUpperCase()];
+    if(!cat) return;
+    catTot[cat].ent+=Number(r.qtd_fisica)||0;
+  });
+  // SAÍDA = confirmado na saída fornecedores (por categoria e por fornecedor)
   (SF_ALL||[]).forEach(r=>{
     const cat=matToCat[(r.material||'').toUpperCase()];
     if(!cat) return;
-    const ent=Number(r.entrada)||0, sai=Number(r.saida)||0;
-    const sal=(r.saldo!=null?Number(r.saldo):ent-sai)||0;
-    catTot[cat].ent+=ent; catTot[cat].sai+=sai; catTot[cat].sal+=sal;
+    const sai=Number(r.saida)||0;
+    catTot[cat].sai+=sai;
     const fn=(r.fornecedor||'—').trim()||'—';
     if(!fmap[fn]){fmap[fn]={}; cats.forEach(c=>fmap[fn][c.key]=0);}
-    fmap[fn][cat]+=sal;
+    fmap[fn][cat]+=sai;
   });
+  cats.forEach(c=>{ catTot[c.key].sal = catTot[c.key].ent - catTot[c.key].sai; });
 
   const cls=v=>v>0?'wrn':v<0?'dng':'ok';
   const tag=v=>{const n=Number(v)||0;const c=n<0?'dng':n>0?'wrn':'neu';return`<span class="tag ${c}">${n>0?'+':''}${n}</span>`;};
@@ -1822,7 +1830,7 @@ function renderSfDash(){
   const totGeral=cats.reduce((s,c)=>s+catTot[c.key].sal,0);
   let cards=cats.map(c=>{
     const t=catTot[c.key];
-    return`<div class="kcard ${cls(t.sal)}"><div class="klbl">${c.key}</div><div class="kval">${t.sal}</div><div class="ksub">enviou ${t.ent} · confirmou ${t.sai}</div></div>`;
+    return`<div class="kcard ${cls(t.sal)}"><div class="klbl">${c.key}</div><div class="kval">${t.sal}</div><div class="ksub">recebeu ${t.ent} · devolveu ${t.sai}</div></div>`;
   }).join('');
   cards+=`<div class="kcard inf"><div class="klbl">Total a devolver</div><div class="kval">${totGeral}</div><div class="ksub">soma dos saldos</div></div>`;
   $('sfdCards').innerHTML=cards;

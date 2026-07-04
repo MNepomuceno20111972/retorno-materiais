@@ -159,6 +159,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <option>CAIXA PLASTICA MODELO M</option><option>CAIXA PLASTICA MODELO P</option>
       <option>CARRINHO DE FLOR</option><option>CARADORI</option>
       <option>EURO</option><option>EURO CHEP</option><option>CX DE FORNECEDOR</option>
+      <option>CHAPATEX</option><option>CARRO DOLLY BIMBO</option><option>CESTO PLASTICO</option>
+      <option>CAIXA BIMBO</option><option>CESTOS</option>
     </select>
     <select id="fDv" onchange="filt()">
       <option value="">Todas divergências</option>
@@ -987,6 +989,11 @@ const MATS_FORM=[
   {id:'cfl', label:'Carrinho de Flor', key:'CARRINHO DE FLOR'},
   {id:'crd', label:'Caradori', key:'CARADORI'},
   {id:'cxf', label:'Cx de Fornecedor', key:'CX DE FORNECEDOR'},
+  {id:'cptx', label:'Chapatex', key:'CHAPATEX'},
+  {id:'dolly', label:'Carro Dolly Bimbo', key:'CARRO DOLLY BIMBO'},
+  {id:'cstp', label:'Cesto Plástico', key:'CESTO PLASTICO'},
+  {id:'cxbb', label:'Caixa Bimbo', key:'CAIXA BIMBO'},
+  {id:'csts', label:'Cestos', key:'CESTOS'},
 ];
 
 function buildMatGrid(){
@@ -1760,7 +1767,10 @@ const SF_DEVOLVER=[
   {key:'Caixas Fornecedores', mats:['CX DE FORNECEDOR']},
   {key:'Caixas Bimbo',        mats:['CAIXA BIMBO']},
   {key:'Carrinho Bimbo',      mats:['CARRINHO BIMBO','CARRO DOLLY BIMBO']},
-  {key:'Carrinho de Flor',    mats:['CARRINHO DE FLOR']}
+  {key:'Carrinho de Flor',    mats:['CARRINHO DE FLOR']},
+  {key:'Chapatex',            mats:['CHAPATEX']},
+  {key:'Cesto Plástico',      mats:['CESTO PLASTICO']},
+  {key:'Cestos',              mats:['CESTOS']}
 ];
 
 function renderSfDash(){

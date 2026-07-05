@@ -814,6 +814,8 @@ async function fbDeleteRec(id) {
 }
 
 function $(id){return document.getElementById(id)}
+// Data local (UTC-3) em YYYY-MM-DD. Evita o bug de virar o dia às 21h com toISOString (UTC).
+function hojeLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
 // NAV
 function go(p){
@@ -1108,7 +1110,7 @@ function clrLoja(){
 
 function clrFrm(){
   $('nNF').value='';$('nOp').value='';$('nCf').value='';
-  $('nDt').value=new Date().toISOString().slice(0,10);
+  $('nDt').value=hojeLocal();
   clrLoja();
   MATS_FORM.forEach(m=>{
     const f=$('qf_'+m.id),n=$('qn_'+m.id);
@@ -1201,7 +1203,7 @@ function expCSV(){
   const csv=[hdr,...body].join('\n');
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`retorno_materiais_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  a.download=`retorno_materiais_${hojeLocal()}.csv`;a.click();
   ntfy('CSV exportado — '+d.length+' registros','ok');
 }
 
@@ -1376,7 +1378,7 @@ function openTriMdl(id){
   $('trMdlNF').value=t.nota_fiscal||'';
   $('trMdlLoja').value=t.loja||'';
   $('trMdlQtd').value=t.qtd_caixas||0;
-  $('trMdlDt').value=t.data_triagem?t.data_triagem.substring(0,10):new Date().toISOString().slice(0,10);
+  $('trMdlDt').value=t.data_triagem?t.data_triagem.substring(0,10):hojeLocal();
   $('trMdlOp').value=t.operador_triagem||'';
   $('trMdlMov').value=t.operador_movimentacao||'';
   $('trMdl').classList.add('open');
@@ -1905,7 +1907,7 @@ function calcSaldo(){
 function openSfNovo(){
   $('sfMdlTit').textContent='🚚 Novo Lançamento';
   $('sfMdlId').value='';
-  $('sfMDt').value=new Date().toISOString().slice(0,10);
+  $('sfMDt').value=hojeLocal();
   $('sfMCtrl').value='';$('sfMForn').value='';$('sfMMat').value='';
   $('sfMEnt').value='';$('sfMSai').value='';$('sfMSal').value='';
   $('sfMExp').value='';$('sfMMov').value='';$('sfMConf').value='';
@@ -1982,7 +1984,7 @@ document.addEventListener('click',e=>{
 (function(){
   popSel();
   buildMatGrid();
-  $('nDt').value=new Date().toISOString().slice(0,10);
+  $('nDt').value=hojeLocal();
   initFirebase();
 })();
 </script>

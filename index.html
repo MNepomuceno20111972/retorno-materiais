@@ -122,10 +122,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="ni" id="nav-tri" onclick="go('tri')">🗂️ <span>Triagem</span><span class="nc" id="navTriCnt">—</span></div>
   <div class="ni" id="nav-sf" onclick="go('sf')">🚚 <span>Saída Fornecedores</span><span class="nc" id="navSfCnt">—</span></div>
   <div class="ni" id="nav-sfdash" onclick="go('sfdash')">📦 <span>Saldo Fornecedores</span></div>
-  <div class="ni" id="nav-pvx" onclick="go('pvx')">📊 <span>Produtividade → ProdutiVix</span></div>
-  <div class="nlbl">Sistema</div>
+  <div class="ni" id="nav-pvx" onclick="go('pvx')">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
+  <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-exp" onclick="go('exp')">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-cfg" onclick="go('cfg')">⚙️ <span>Configuração</span></div>
+  <div class="ni" id="nav-admout" style="display:none" onclick="admLogout()">🔓 <span>Sair do modo admin</span></div>
 </nav>
 
 <main>
@@ -524,6 +525,22 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </main>
 </div>
 
+<!-- MODAL SENHA ADMIN -->
+<div class="ov" id="admMdl">
+  <div class="mdl" style="width:360px">
+    <div class="mh"><span>🔒 Área restrita</span></div>
+    <div style="padding:16px">
+      <p style="font-size:13px;color:var(--mut);margin:0 0 12px">Esta área é exclusiva do administrador. Informe a senha para continuar.</p>
+      <input type="password" id="admPwd" placeholder="Senha do administrador" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--brd,#2a3646);background:var(--bg2,#0f1722);color:var(--txt,#e6edf3);font-size:14px" onkeydown="if(event.key==='Enter')admOk()">
+      <div id="admErr" style="color:var(--red,#ef4444);font-size:12px;min-height:16px;margin-top:6px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button class="btn" onclick="admCancel()">Cancelar</button>
+        <button class="btn pri" onclick="admOk()">Entrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL SAÍDA FORNECEDORES -->
 <div class="ov" id="sfMdl">
   <div class="mdl" style="width:620px">
@@ -819,6 +836,7 @@ function hojeLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getM
 
 // NAV
 function go(p){
+  if(ADMIN_PAGES.includes(p)&&!isAdmin()){admAsk(p);return;}
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.ni').forEach(x=>x.classList.remove('on'));
   $('pg-'+p).classList.add('on');
@@ -830,6 +848,7 @@ function go(p){
   if(p==='sf'){SF_FILT=[...SF_ALL];renderSfTbl()}
   if(p==='sfdash'){renderSfDash()}
   if(p==='pvx'){pvxReset()}
+  $('nav-admout').style.display=isAdmin()?'':'none';
 }
 
 // STATUS
@@ -1626,6 +1645,41 @@ function srtSf(field){
   renderSfTbl();
 }
 
+// ===== CONTROLE DE ACESSO ADMIN =====
+// Senha padrão: admin2026 — TROQUE. Para gerar novo hash, abra o console (F12) e rode:
+//   gmGerarHash('sua_nova_senha')
+// e cole o resultado em ADMIN_HASH abaixo.
+// Atenção: proteção client-side. Impede uso casual, não substitui Firebase Auth + rules.
+const ADMIN_HASH='6051fc84a7a0d74c225fb18a496b09952da5642e60723ecae543298edd7d82d6';
+const ADMIN_PAGES=['pvx','exp','cfg'];
+let _admPend=null;
+function isAdmin(){return sessionStorage.getItem('gm_adm')==='1';}
+async function sha256(t){
+  const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+window.gmGerarHash=t=>sha256(t).then(h=>{console.log(h);return h;});
+function admAsk(p){
+  _admPend=p||null;
+  $('admPwd').value='';$('admErr').textContent='';
+  $('admMdl').classList.add('open');
+  setTimeout(()=>$('admPwd').focus(),60);
+}
+async function admOk(){
+  const h=await sha256($('admPwd').value);
+  if(h===ADMIN_HASH){
+    sessionStorage.setItem('gm_adm','1');
+    $('admMdl').classList.remove('open');
+    const p=_admPend;_admPend=null;
+    if(p)go(p);
+  }else{
+    $('admErr').textContent='Senha incorreta.';
+    $('admPwd').select();
+  }
+}
+function admCancel(){_admPend=null;$('admMdl').classList.remove('open');}
+function admLogout(){sessionStorage.removeItem('gm_adm');go('dash');}
+
 // ===== MIGRAÇÃO PRODUTIVIX =====
 const PVX_CONFIG={
   apiKey:'AIzaSyCxlvKWd03OB1MyTPmLra2YvUrorBJcNRI',
@@ -1759,6 +1813,7 @@ function pvxRenderPreview(){
 }
 
 async function pvxCommit(){
+  if(!isAdmin()){admAsk('pvx');return;}
   if(!_pvxCands||_pvxCands.totNovos<=0){alert('Pré-visualize primeiro.');return;}
   if(!confirm('Confirmar a migração de '+_pvxCands.totNovos+' apontamentos para o ProdutiVix? Grava direto na base de produção.'))return;
   $('pvxStatus').textContent='Gravando no ProdutiVix...';

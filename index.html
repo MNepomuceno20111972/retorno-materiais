@@ -1008,19 +1008,22 @@ function renderRank(){
 
 // FORM NOVO
 // MATERIAIS DO FORMULÁRIO
+// Ordem por frequência real de recebimento (Recebimento_Caixas Plásticas_2026):
+// M 1,03M > P 476k > G 139k > Caradori 25,6k > PBR 3,5k > Desc > CxForn > Gaiola > Carrinho > CHEP > Euro > EuroCHEP.
+// Itens sem registro em 2026 ficam no fim, na ordem original.
 const MATS_FORM=[
-  {id:'pbr', label:'Palete PBR', key:'PALETE PBR'},
-  {id:'chp', label:'Palete CHEP', key:'PALETE CHEP'},
-  {id:'dsc', label:'Palete Descartável', key:'PALETE DESC.'},
-  {id:'eur', label:'Palete Euro', key:'EURO'},
-  {id:'euc', label:'Palete Euro CHEP', key:'EURO CHEP'},
-  {id:'gmd', label:'Gaiola de Madeira', key:'GAIOLA MADEIRA'},
-  {id:'cxg', label:'Caixa Plástica Modelo G', key:'CAIXA PLASTICA MODELO G'},
   {id:'cxm', label:'Caixa Plástica Modelo M', key:'CAIXA PLASTICA MODELO M'},
   {id:'cxp', label:'Caixa Plástica Modelo P', key:'CAIXA PLASTICA MODELO P'},
-  {id:'cfl', label:'Carrinho de Flor', key:'CARRINHO DE FLOR'},
+  {id:'cxg', label:'Caixa Plástica Modelo G', key:'CAIXA PLASTICA MODELO G'},
   {id:'crd', label:'Caradori', key:'CARADORI'},
+  {id:'pbr', label:'Palete PBR', key:'PALETE PBR'},
+  {id:'dsc', label:'Palete Descartável', key:'PALETE DESC.'},
   {id:'cxf', label:'Cx de Fornecedor', key:'CX DE FORNECEDOR'},
+  {id:'gmd', label:'Gaiola de Madeira', key:'GAIOLA MADEIRA'},
+  {id:'cfl', label:'Carrinho de Flor', key:'CARRINHO DE FLOR'},
+  {id:'chp', label:'Palete CHEP', key:'PALETE CHEP'},
+  {id:'eur', label:'Palete Euro', key:'EURO'},
+  {id:'euc', label:'Palete Euro CHEP', key:'EURO CHEP'},
   {id:'cptx', label:'Chapatex', key:'CHAPATEX'},
   {id:'dolly', label:'Carro Dolly Bimbo', key:'CARRO DOLLY BIMBO'},
   {id:'cstp', label:'Cesto Plástico', key:'CESTO PLASTICO'},

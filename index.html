@@ -105,6 +105,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <span class="logo">Retorno de <span>Materiais</span></span>
   <span class="gm">GODMODE</span>
   <div class="hright">
+    <span id="chapaBadge" onclick="chapaAsk(true)" title="Trocar identificação" style="cursor:pointer;font-size:12px;color:var(--mut);border:1px solid var(--bdr);border-radius:20px;padding:4px 12px;margin-right:10px">👤 identificar</span>
     <span class="sdot" id="sdot" style="background:var(--amb)"></span>
     <span class="stxt" id="stxt">Aguardando...</span>
   </div>
@@ -525,6 +526,22 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </main>
 </div>
 
+<!-- MODAL CHAPA -->
+<div class="ov" id="chapaMdl">
+  <div class="mdl" style="width:360px">
+    <div class="mh"><span>👤 Identificação</span></div>
+    <div style="padding:16px">
+      <p style="font-size:13px;color:var(--mut);margin:0 0 12px">Informe sua chapa (matrícula) para registrar os lançamentos em seu nome.</p>
+      <input type="text" id="chapaInp" placeholder="Ex: 02201539" inputmode="numeric" maxlength="8" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg2);color:var(--txt);font-size:15px;letter-spacing:1px;text-align:center" onkeydown="if(event.key==='Enter')chapaOk()">
+      <div id="chapaErr" style="color:var(--red,#ef4444);font-size:12px;min-height:16px;margin-top:6px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button class="btn" onclick="$('chapaMdl').classList.remove('open')">Agora não</button>
+        <button class="btn pri" onclick="chapaOk()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL SENHA ADMIN -->
 <div class="ov" id="admMdl">
   <div class="mdl" style="width:360px">
@@ -756,6 +773,43 @@ const COLABORADORES=[
   {mat:'02201960',nome:'ELIENE LIMA OLIVEIRA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'}
 ];
 const OPS=COLABORADORES.map(c=>c.nome).sort();
+
+// ===== IDENTIFICAÇÃO POR CHAPA =====
+// Chapas fora do quadro operacional autorizadas a lançar:
+const CHAPAS_EXTRA=[{mat:'02201539',nome:'MARCELO (ADMINISTRADOR)',cargo:'ADMINISTRADOR',turno:'ADM'}];
+function chapaLookup(m){
+  m=String(m||'').trim();
+  return COLABORADORES.find(c=>c.mat===m)||CHAPAS_EXTRA.find(c=>c.mat===m)||null;
+}
+function chapaAtual(){try{return JSON.parse(localStorage.getItem('gm_chapa'))||null}catch(e){return null}}
+function chapaBadge(){
+  const c=chapaAtual(),el=$('chapaBadge');if(!el)return;
+  if(c){el.textContent='👤 '+c.nome.split(' ').slice(0,2).join(' ')+' · '+c.mat;el.style.color='var(--txt)';}
+  else{el.textContent='👤 identificar';el.style.color='var(--mut)';}
+}
+function chapaAsk(force){
+  if(chapaAtual()&&!force)return;
+  $('chapaInp').value='';$('chapaErr').textContent='';
+  $('chapaMdl').classList.add('open');
+  setTimeout(()=>$('chapaInp').focus(),80);
+}
+function chapaOk(){
+  const c=chapaLookup($('chapaInp').value);
+  if(!c){$('chapaErr').textContent='Chapa não encontrada na lista de colaboradores.';return;}
+  localStorage.setItem('gm_chapa',JSON.stringify({mat:c.mat,nome:c.nome}));
+  $('chapaMdl').classList.remove('open');
+  chapaBadge();
+  ntfy('Identificado: '+c.nome,'ok');
+}
+// Carimba autoria de criação
+function chapaStamp(o){const c=chapaAtual();if(c){o.chapa_lancamento=c.mat;o.lancado_por=c.nome;}return o;}
+// Exige identificação antes de gravar
+function chapaExige(){
+  if(chapaAtual())return true;
+  ntfy('Identifique-se com sua chapa antes de lançar','er');
+  chapaAsk(true);
+  return false;
+}
 
 // ===================== FIREBASE CONFIG =====================
 const FB_CONFIG = {
@@ -1155,8 +1209,9 @@ async function savRec(){
     return{material:m.key,qtd_fisica:qf||null,qtd_nf:qn||null,divergencia:qf-qn};
   }).filter(l=>l.qtd_fisica||l.qtd_nf);
   if(!linhas.length){ntfy('Informe pelo menos um material','er');return}
-  const base={data:dt,loja:lj,nota_fiscal:$('nNF').value||null,
-    operador_carga:$('nOp').value||null,conferente:$('nCf').value||null};
+  if(!chapaExige())return;
+  const base=chapaStamp({data:dt,loja:lj,nota_fiscal:$('nNF').value||null,
+    operador_carga:$('nOp').value||null,conferente:$('nCf').value||null});
   const recs=linhas.map(l=>({...base,...l}));
   $('btnSv').innerHTML='<span class="ldr"></span> Salvando...';$('btnSv').disabled=true;
   for(const rec of recs){
@@ -1190,6 +1245,7 @@ async function updRec(){
   const rec={data:$('eDt').value,loja:$('eLja').value,nota_fiscal:$('eNF').value||null,
     material:$('eMt').value,qtd_fisica:qf,qtd_nf:qn,divergencia:(qf||0)-(qn||0),
     operador_carga:$('eOp').value||null,conferente:$('eCf').value||null};
+  const _c=chapaAtual();if(_c){rec.chapa_edicao=_c.mat;rec.editado_por=_c.nome;}
   if(fbReady){ await fbUpdateRec(id, rec); }
   else{ const i=ALL.findIndex(x=>x.id===id);if(i>=0){ALL[i]={...ALL[i],...rec};try{localStorage.setItem('rm_c',JSON.stringify(ALL.slice(0,2000)))}catch(e){}} }
   ntfy('Atualizado!','ok');clsMdl(); await loadData();
@@ -1303,6 +1359,7 @@ function upsertTriagem(base, linhas){
       operador_movimentacao: null,
       created_at: new Date().toISOString()
     };
+    chapaStamp(novaLinha);
     TRI_ALL.unshift(novaLinha);
     saveTriCache();
     if(fbReady&&DB){
@@ -2013,11 +2070,14 @@ function clsSfMdl(){$('sfMdl').classList.remove('open')}
 async function savSf(){
   const dt=$('sfMDt').value,forn=$('sfMForn').value.trim(),mat=$('sfMMat').value;
   if(!dt||!forn||!mat){ntfy('Preencha data, fornecedor e material','er');return}
+  if(!chapaExige())return;
   const ent=Number($('sfMEnt').value)||null,sai=Number($('sfMSai').value)||null;
   const rec={data:dt,controle:$('sfMCtrl').value.trim()||null,fornecedor:forn,material:mat,
     entrada:ent,saida:sai,saldo:(ent||0)-(sai||0),
     op_expedicao:$('sfMExp').value||null,op_movimentacao:$('sfMMov').value||null,conferente:$('sfMConf').value||null};
   const id=$('sfMdlId').value;
+  if(id){const _c=chapaAtual();if(_c){rec.chapa_edicao=_c.mat;rec.editado_por=_c.nome;}}
+  else{chapaStamp(rec);}
   $('sfMdlBtn').innerHTML='<span class="ldr"></span>';$('sfMdlBtn').disabled=true;
   if(id){
     if(fbReady&&DB) await DB.ref('retorno_app/saida_fornecedores/'+id).update(rec);
@@ -2063,6 +2123,8 @@ document.addEventListener('click',e=>{
 (function(){
   popSel();
   buildMatGrid();
+  chapaBadge();
+  setTimeout(()=>chapaAsk(false),600);
   $('nDt').value=hojeLocal();
   initFirebase();
 })();

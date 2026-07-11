@@ -554,7 +554,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="fg">
         <div class="fld"><label>Data *</label><input type="date" id="sfMDt"></div>
         <div class="fld"><label>Controle (VP ou NF)</label><input type="text" id="sfMCtrl" placeholder="Ex: VP2023-ABCD12 ou 1698667"></div>
-        <div class="fld s2"><label>Fornecedor *</label><input type="text" id="sfMForn" placeholder="Nome do fornecedor"></div>
+        <div class="fld s2"><label>Fornecedor *</label><input type="text" id="sfMForn" placeholder="Nome do fornecedor" list="sfFornList" autocomplete="off"><datalist id="sfFornList"></datalist></div>
         <div class="fld s2">
           <label>Material *</label>
           <select id="sfMMat">
@@ -1579,10 +1579,23 @@ async function enviarParaPaletCD(base, linhas) {
 
 // ===================== SAÍDA FORNECEDORES =====================
 let SF_ALL=[], SF_FILT=[], sfPg=1, sfSortF='data', sfSortD='desc';
+
+// Autocomplete de fornecedor: nomes distintos já lançados, mais recentes primeiro
+function sfBuildFornList(){
+  const el=$('sfFornList'); if(!el)return;
+  const seen=new Set(), out=[];
+  SF_ALL.forEach(r=>{
+    const f=String(r.fornecedor||'').trim();
+    const k=f.toUpperCase();
+    if(f && !seen.has(k)){seen.add(k);out.push(f);}
+  });
+  el.innerHTML=out.map(f=>'<option value="'+f.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">').join('');
+}
 const SF_PS=25;
 
 function loadSfCache(){
   try{const c=localStorage.getItem('sf_c');if(c)SF_ALL=JSON.parse(c);}catch(e){SF_ALL=[];}
+  sfBuildFornList();
 }
 function saveSfCache(){
   try{localStorage.setItem('sf_c',JSON.stringify(SF_ALL.slice(0,3000)));}catch(e){}
@@ -1594,6 +1607,7 @@ async function loadSfData(){
     const snap=await DB.ref('retorno_app/saida_fornecedores').once('value');
     const raw=snap.val()||{};
     SF_ALL=Object.values(raw).sort((a,b)=>(b.data||'')>(a.data||'')?1:-1);
+    sfBuildFornList();
     saveSfCache();renderSf();
     $('navSfCnt').textContent=SF_ALL.length;
   }catch(e){loadSfCache();renderSf();}

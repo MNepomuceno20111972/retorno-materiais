@@ -1230,6 +1230,9 @@ async function savRec(){
   enviarParaPaletCD(base, linhas);
   $('btnSv').innerHTML='✔ Registrar Retorno';$('btnSv').disabled=false;
   clrFrm(); await loadData();
+  // Volta ao início do formulário para o próximo lançamento
+  const topo=$('nLjBusca');
+  if(topo){topo.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>topo.focus({preventScroll:true}),350);}
 }
 
 // EDITAR

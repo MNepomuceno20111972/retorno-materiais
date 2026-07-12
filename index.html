@@ -84,6 +84,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .fld label{display:block;font-size:11px;color:var(--mut);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
 .fld input,.fld select,.fld textarea{width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r);color:var(--txt);padding:8px 11px;font-size:13px;outline:none;transition:.12s;font-family:inherit}
 .fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--acc)}
+/* Destaque do material em edição no grid do Novo Retorno */
+.matrow{border-radius:8px;padding:2px 4px;margin:0 -4px;transition:background .15s}
+.matrow:focus-within{background:rgba(96,165,250,.08)}
+.matrow:focus-within .matlbl{color:var(--acc);font-weight:600}
+.matrow input:focus{border-color:var(--acc)!important;box-shadow:0 0 0 2px rgba(96,165,250,.18)}
 .fg{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 .fg .s2{grid-column:span 2}
 .notif{position:fixed;top:62px;right:16px;z-index:300;display:flex;flex-direction:column;gap:7px;pointer-events:none}
@@ -1087,8 +1092,8 @@ const MATS_FORM=[
 
 function buildMatGrid(){
   $('matGrid').innerHTML=MATS_FORM.map(m=>`
-    <div style="display:grid;grid-template-columns:1fr 90px 90px 80px;gap:8px;align-items:center">
-      <span style="font-size:13px;color:var(--txt)">${m.label}</span>
+    <div class="matrow" style="display:grid;grid-template-columns:1fr 90px 90px 80px;gap:8px;align-items:center">
+      <span class="matlbl" style="font-size:13px;color:var(--txt)">${m.label}</span>
       <input type="number" id="qf_${m.id}" min="0" placeholder="0" oninput="calcTotais()"
         style="background:var(--bg2);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);padding:6px 8px;font-size:13px;outline:none;width:100%;text-align:center">
       <input type="number" id="qn_${m.id}" min="0" placeholder="0" oninput="calcTotais()"

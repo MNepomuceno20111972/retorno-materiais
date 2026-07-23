@@ -471,7 +471,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <thead><tr>
         <th>Item</th>
         <th style="text-align:center">Entrada (retorno)</th>
-        <th style="text-align:center">Saída (devolvido)</th>
+        <th style="text-align:center">Saída</th>
         <th style="text-align:center">Saldo</th>
       </tr></thead>
       <tbody id="sfdItemBody"></tbody>
@@ -599,8 +599,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <option>CESTOS</option><option>EURO</option><option>EURO CHEP</option>
           </select>
         </div>
-        <div class="fld"><label>Entrada (saiu do CD)</label><input type="number" id="sfMEnt" placeholder="0" min="0" oninput="calcSaldo()"></div>
-        <div class="fld"><label>Saída (confirmado forn.)</label><input type="number" id="sfMSai" placeholder="0" min="0" oninput="calcSaldo()"></div>
+        <div class="fld"><label>Entrada</label><input type="number" id="sfMEnt" placeholder="0" min="0" oninput="calcSaldo()"></div>
+        <div class="fld"><label>Saída</label><input type="number" id="sfMSai" placeholder="0" min="0" oninput="calcSaldo()"></div>
         <div class="fld"><label>Saldo (auto)</label><input type="number" id="sfMSal" readonly style="opacity:.65"></div>
         <div class="fld"></div>
         <div class="fld s2"><label>Operador de Expedição</label><select id="sfMExp"><option value="">Selecione...</option></select></div>
@@ -1619,8 +1619,8 @@ async function enviarParaPaletCD(base, linhas) {
     }
 
     // 3b. Novo número de movimento via transação (lê o valor já comitado)
-    const r = await root.child('nMov').transaction(cur => (cur || 0) + 1);
-    const nMov = r.snapshot.val();
+    const r = await root.child('counters/nMov').transaction(cur => (cur || 1) + 1);
+    const nMov = (r.snapshot.val() || 1) - 1;
     const id = 'MOV-' + String(nMov).padStart(5, '0');
 
     // 3c. Registra o movimento
@@ -1642,6 +1642,166 @@ async function enviarParaPaletCD(base, linhas) {
   } catch(e) {
     console.warn('PaletCD integração falhou:', e.message);
     ntfy('⚠️ PaletCD não sincronizado: ' + e.message, 'er');
+  }
+}
+
+// ============ INTEGRAÇÃO PALETCD — SAÍDA FORNECEDORES ============
+// Mapeamento (tela "Recebimento de Fornecedores" do PaletCD):
+//   ENTRADA (GODMODE) -> "Receber": abre o DÉBITO (RCF). NÃO mexe em estoque.
+//     O palete entregue pelo fornecedor ainda não é seu — ele só entra no REV
+//     depois de voltar da loja pela triagem. Somar aqui contaria o mesmo palete 2x.
+//   SAÍDA   (GODMODE) -> "Pagar"  : baixa do est/REV + abate o débito.
+// NUNCA passa por TriagemFila nem ReformaFila.
+// 1 lançamento SF = 1 registro RCF (total=entrada, pago=saida). Sem lógica de rateio.
+// Idempotente: palet_sync guarda o que já foi enviado; editar aplica só o delta.
+
+const MAP_PALET_SF = {
+  'PALETE PBR':'PBR', 'PALETE CHEP':'CHEP',
+  'PALETE DESCARTAVEL':'DESCARTAVEL', 'PALETE DESC.':'DESCARTAVEL',
+  'EURO':'EURO', 'EURO CHEP':'CHEP_EURO', 'GAIOLA MADEIRA':'GAIOLA'
+};
+
+// Estado a enviar para o PaletCD a partir de um lançamento SF
+function sfEstado(rec){
+  const modelo = MAP_PALET_SF[rec.material];
+  if(!modelo) return null;                       // material não é palete/gaiola
+  const entrada = Math.max(0, Number(rec.entrada)||0);
+  const saida   = Math.max(0, Number(rec.saida)||0);
+  if(entrada<=0 && saida<=0) return null;
+  return { modelo, entrada, saida };
+}
+
+// Aloca próximo id de um contador oficial (palet_app/v2/counters/*)
+async function sfProxId(root, contador, prefixo, casas){
+  const r = await root.child('counters/'+contador).transaction(cur => (cur||1)+1);
+  const n = (r.snapshot.val()||1) - 1;
+  return prefixo + String(n).padStart(casas,'0');
+}
+
+function sfTs(data){
+  const [y,mo,d] = String(data||'').split('-');
+  return `${d}/${mo}/${y}, ${new Date().toLocaleTimeString('pt-BR')}`;
+}
+
+async function sfSyncPaletCD(rec, prev){
+  const novo = sfEstado(rec);
+  const ant  = prev || null;
+  if(!novo && !ant) return null;
+
+  let deltaOk = false;
+  try{
+    await paletcdInit();
+    const root = PALETCD_DB.ref('palet_app/v2');
+
+    // 1. Delta em est/REV — SOMENTE a saída (pagamento) baixa estoque.
+    //    Se o material mudou, estorna o modelo antigo por inteiro antes de aplicar o novo.
+    const ajustes = {};
+    if(ant)  ajustes[ant.modelo]  = (ajustes[ant.modelo]||0)  + (ant.saida||0);   // estorna anterior
+    if(novo) ajustes[novo.modelo] = (ajustes[novo.modelo]||0) - (novo.saida||0);  // baixa nova
+    for(const k of Object.keys(ajustes)){
+      const d = ajustes[k];
+      if(!d) continue;
+      await root.child('est/REV/'+k).transaction(cur => (cur||0) + d);
+    }
+    deltaOk = true;
+
+    // 2. Lançamento removido / deixou de ser palete → apaga RCF e movimentos
+    if(!novo){
+      if(ant.rcfId)    await root.child('recebForn/'+ant.rcfId).remove();
+      if(ant.movRecId) await root.child('movs/'+ant.movRecId).remove();
+      if(ant.movPagId) await root.child('movs/'+ant.movPagId).remove();
+      await root.child('lastSync').set(new Date().toISOString());
+      ntfy('↩️ PaletCD: lançamento estornado','ok');
+      return null;
+    }
+
+    const ts = sfTs(rec.data);
+    const out = {
+      modelo: novo.modelo, entrada: novo.entrada, saida: novo.saida,
+      rcfId: (ant&&ant.rcfId)||null, movRecId:(ant&&ant.movRecId)||null, movPagId:(ant&&ant.movPagId)||null
+    };
+
+    // 3. RCF (débito do fornecedor) — só existe se houve ENTRADA
+    if(novo.entrada > 0){
+      if(!out.rcfId) out.rcfId = await sfProxId(root,'nRecForn','RCF-',4);
+      const pago = Math.min(novo.saida, novo.entrada);
+      await root.child('recebForn/'+out.rcfId).set({
+        id: out.rcfId, fornecedor: rec.fornecedor||'', nf: rec.controle||'',
+        data: rec.data, usuario: 'Log. Reversa',
+        obs: 'GODMODE · Saída Fornecedores',
+        modelos: { [novo.modelo]: novo.entrada },
+        total: novo.entrada, pago,
+        status: pago>=novo.entrada ? 'Quitado' : (pago>0 ? 'Pago parcial' : 'Pendente'),
+        pagamentos: novo.saida>0 ? [{data: rec.data, qtd: novo.saida, obs:'GODMODE', tipo:'Pagamento'}] : [],
+        ts, origemKey: 'SF:'+rec.id
+      });
+    } else if(out.rcfId){
+      await root.child('recebForn/'+out.rcfId).remove();
+      out.rcfId = null;
+    }
+
+    // 4. Movimento de RECEBIMENTO (entrada)
+    if(novo.entrada > 0){
+      if(!out.movRecId) out.movRecId = await sfProxId(root,'nMov','MOV-',5);
+      await root.child('movs/'+out.movRecId).set({
+        id: out.movRecId, tipo:'Recebimento Fornecedor',
+        origem: rec.fornecedor||'Fornecedor', destino:'CD', loja:null,
+        forn: rec.fornecedor||'', qtd: novo.entrada, usuario:'Log. Reversa',
+        obs: (rec.controle?'Controle: '+rec.controle+' | ':'')+'GODMODE · Saída Fornecedores',
+        modelos: { [novo.modelo]: novo.entrada }, ts,
+        nMov: parseInt(String(out.movRecId).replace(/\D/g,''))||0,
+        origemKey: 'SF:'+rec.id+':ENT'
+      });
+    } else if(out.movRecId){
+      await root.child('movs/'+out.movRecId).remove(); out.movRecId = null;
+    }
+
+    // 5. Movimento de PAGAMENTO (saída)
+    if(novo.saida > 0){
+      if(!out.movPagId) out.movPagId = await sfProxId(root,'nMov','MOV-',5);
+      await root.child('movs/'+out.movPagId).set({
+        id: out.movPagId, tipo:'Pagamento Fornecedor',
+        origem:'REV', destino:'Fornecedor', loja:null,
+        forn: rec.fornecedor||'', qtd: novo.saida, usuario:'Log. Reversa',
+        obs: (rec.controle?'Controle: '+rec.controle+' | ':'')+'GODMODE · Saída Fornecedores',
+        modelos: { [novo.modelo]: novo.saida }, ts,
+        nMov: parseInt(String(out.movPagId).replace(/\D/g,''))||0,
+        origemKey: 'SF:'+rec.id+':SAI'
+      });
+    } else if(out.movPagId){
+      await root.child('movs/'+out.movPagId).remove(); out.movPagId = null;
+    }
+
+    await root.child('lastSync').set(new Date().toISOString());
+    ntfy(`✅ PaletCD: débito ${novo.entrada} / pago ${novo.saida} — ${novo.modelo}`,'ok');
+    return out;
+
+  }catch(e){
+    console.warn('PaletCD SF falhou:', e.message);
+    ntfy('⚠️ PaletCD não sincronizado: '+e.message,'er');
+    // Delta já gravado: registra o novo estado para não duplicar na próxima edição
+    return deltaOk && novo
+      ? { modelo:novo.modelo, entrada:novo.entrada, saida:novo.saida,
+          rcfId:(ant&&ant.rcfId)||null, movRecId:(ant&&ant.movRecId)||null, movPagId:(ant&&ant.movPagId)||null }
+      : ant;
+  }
+}
+
+// Estorno completo (exclusão do lançamento SF)
+async function sfRevertPaletCD(prev){
+  if(!prev) return;
+  try{
+    await paletcdInit();
+    const root = PALETCD_DB.ref('palet_app/v2');
+    if(prev.saida>0) await root.child('est/REV/'+prev.modelo).transaction(cur => (cur||0) + prev.saida);
+    if(prev.rcfId)    await root.child('recebForn/'+prev.rcfId).remove();
+    if(prev.movRecId) await root.child('movs/'+prev.movRecId).remove();
+    if(prev.movPagId) await root.child('movs/'+prev.movPagId).remove();
+    await root.child('lastSync').set(new Date().toISOString());
+    ntfy('↩️ PaletCD: estorno aplicado','ok');
+  }catch(e){
+    console.warn('PaletCD SF estorno falhou:', e.message);
+    ntfy('⚠️ Estorno PaletCD falhou: '+e.message,'er');
   }
 }
 
@@ -2090,13 +2250,25 @@ async function savSf(){
   else{chapaStamp(rec);}
   $('sfMdlBtn').innerHTML='<span class="ldr"></span>';$('sfMdlBtn').disabled=true;
   if(id){
+    const antigo=SF_ALL.find(x=>x.id===id)||{};
+    const prevSync=antigo.palet_sync||null;
     if(fbReady&&DB) await DB.ref('retorno_app/saida_fornecedores/'+id).update(rec);
+    // PaletCD: recalcula delta sobre o que já foi enviado
+    const novoSync=await sfSyncPaletCD({...antigo,...rec,id}, prevSync);
+    rec.palet_sync=novoSync||null;
+    if(fbReady&&DB) await DB.ref('retorno_app/saida_fornecedores/'+id+'/palet_sync').set(novoSync||null);
     const i=SF_ALL.findIndex(x=>x.id===id);if(i>=0)SF_ALL[i]={...SF_ALL[i],...rec};
     ntfy('Atualizado!','ok');
   }else{
     rec.id=crypto.randomUUID();rec.created_at=new Date().toISOString();
     if(fbReady&&DB) await DB.ref('retorno_app/saida_fornecedores/'+rec.id).set(rec);
     else SF_ALL.unshift(rec);
+    // PaletCD: primeira baixa deste lançamento
+    const novoSync=await sfSyncPaletCD(rec, null);
+    if(novoSync){
+      rec.palet_sync=novoSync;
+      if(fbReady&&DB) await DB.ref('retorno_app/saida_fornecedores/'+rec.id+'/palet_sync').set(novoSync);
+    }
     ntfy('Salvo!','ok');
   }
   saveSfCache();
@@ -2106,6 +2278,8 @@ async function savSf(){
 
 async function delSf(id){
   if(!confirm('Excluir este registro?'))return;
+  const alvo=SF_ALL.find(x=>x.id===id);
+  if(alvo&&alvo.palet_sync) await sfRevertPaletCD(alvo.palet_sync); // estorna no PaletCD
   if(fbReady&&DB) await DB.ref('retorno_app/saida_fornecedores/'+id).remove();
   SF_ALL=SF_ALL.filter(x=>x.id!==id);saveSfCache();
   ntfy('Excluído','ok');await loadSfData();

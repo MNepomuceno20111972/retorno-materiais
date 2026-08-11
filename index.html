@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v34
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v35
+     v35: triagem automatica de CARRINHO DE FLOR -> OP-TRI-02 no ProdutiVix
      NAO SALVAR PELO NAVEGADOR (Ctrl+S). Isso grava o DOM e os dados.
      ============================================================ -->
 <html lang="pt-BR"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -647,6 +648,9 @@ tr:hover td{background:#F4F2EA}
       Recebimento, Triagem, Movimentação, Conferência e Expedição entram, por colaborador selecionado.
       A migração é idempotente: rodar de novo não duplica.
       <br><br>
+      🌸 <strong>Carrinho de Flor é automático.</strong> Todo volume que entra no dia vira OP-TRI-02
+      para JOAQUIM DE SOUZA PIRES e OSMAR ROMAO CARDOSO, sem depender de apontamento na tela de Triagem.
+      <br><br>
       <strong>Sempre pré-visualize antes de confirmar.</strong> A confirmação grava direto na base do ProdutiVix.
     </div>
     <div style="padding:0 16px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -655,15 +659,16 @@ tr:hover td{background:#F4F2EA}
       <span id="pvxStatus" style="font-size:12px;color:var(--text2,#9fb3c8)"></span>
     </div>
   </div>
-  <div class="kgrid" id="pvxCards" style="grid-template-columns: repeat(4, 1fr); display: grid;"><div class="kcard ok"><div class="klbl">Apontamentos novos</div><div class="kval">198</div><div class="ksub">a criar no ProdutiVix</div></div><div class="kcard inf"><div class="klbl">Volume total</div><div class="kval">27578.240000000005</div><div class="ksub">soma migrada</div></div><div class="kcard inf"><div class="klbl">Colaboradores</div><div class="kval">18</div><div class="ksub">recebem volume</div></div><div class="kcard ok"><div class="klbl">Sem matrícula</div><div class="kval">0</div><div class="ksub">volume perdido</div></div></div>
-  <div class="tbox" id="pvxPrevBox" style="display: block;">
-    <div class="thead2"><span class="ttit">Pré-visualização por colaborador</span><span class="tcnt" id="pvxPrevCnt">18 colaboradores</span></div>
+  <div class="kgrid" id="pvxCards" style="grid-template-columns:repeat(5,1fr);display:none"></div>
+  <div class="tbox" id="pvxPrevBox" style="display:none">
+    <div class="thead2"><span class="ttit">Pré-visualização por colaborador</span><span class="tcnt" id="pvxPrevCnt">—</span></div>
     <div class="tscroll"><table>
       <thead><tr>
         <th>Colaborador</th><th>Matrícula PVX</th>
         <th style="text-align:center">Recebimento</th>
         <th style="text-align:center">Conferência</th>
         <th style="text-align:center">Triagem</th>
+        <th style="text-align:center">Carrinho Flor</th>
         <th style="text-align:center">Movimentação</th>
         <th style="text-align:center">Expedição</th>
         <th style="text-align:center">Total volume</th>
@@ -2801,6 +2806,21 @@ const PVX_NODE='produtivix_v6';
 const PVX_CUTOFF='2026-07-01';
 let PVX_DB=null, _pvxCands=null;
 
+// ===== TRIAGEM AUTOMATICA: CARRINHO DE FLOR =====
+// A triagem do carrinho de flor nunca e apontada na tela de Triagem.
+// Regra: todo volume que ENTRA no dia (retorno de materiais, material
+// CARRINHO DE FLOR) vira apontamento OP-TRI-02 para a dupla fixa abaixo.
+// Volume cheio para cada um: a dupla faz a triagem junta, nao dividida.
+const FLOR_MAT='CARRINHO DE FLOR';
+const FLOR_ATCOD='OP-TRI-02';
+// Data a partir da qual o automatico vale. Deixe igual ao PVX_CUTOFF para
+// retroagir tudo, ou coloque a data de hoje para valer so daqui pra frente.
+const FLOR_CUTOFF=PVX_CUTOFF;
+const FLOR_EQUIPE=[
+  {mat:'02200134',nome:'JOAQUIM DE SOUZA PIRES'},
+  {mat:'02200717',nome:'OSMAR ROMAO CARDOSO'}
+];
+
 // App Firebase secundário do ProdutiVix. Sem login anônimo aqui:
 // leitura/escrita em produtivix_v6 usa a conta de administrador,
 // validada pelas rules do Realtime Database.
@@ -2880,6 +2900,22 @@ async function pvxBuildCandidates(){
     if(ot) cand.push({nomeGod:ot,atCod:'OP-TRI-01',grupo:'tri',volume:v,data:d,origemKey:'TRI|TRI|'+id});
     if(om) cand.push({nomeGod:om,atCod:'OP-MOV-01',grupo:'mov',volume:v,data:d,origemKey:'TRI|MOV|'+id});
   });
+  // CARRINHO DE FLOR (automatico): ninguem aponta essa triagem.
+  // Soma qtd_fisica por DIA e gera OP-TRI-02 para cada um da dupla fixa.
+  // Reusa o 'ret' ja lido acima: nao custa leitura extra no Firebase.
+  const florDia={};
+  Object.values(ret).forEach(r=>{
+    if((r.material||'').trim().toUpperCase()!==FLOR_MAT) return;
+    const d=dOf(r.data); if(!d||d<FLOR_CUTOFF) return;
+    const q=Number(r.qtd_fisica)||0; if(q<=0) return;
+    florDia[d]=(florDia[d]||0)+q;
+  });
+  Object.entries(florDia).forEach(([d,v])=>{
+    FLOR_EQUIPE.forEach(p=>{
+      cand.push({nomeGod:p.nome,atCod:FLOR_ATCOD,grupo:'flor',volume:v,data:d,
+                 origemKey:'FLOR|TRI|'+d+'|'+p.mat});
+    });
+  });
   // SF: movimentação -> OP-MOV-01, conferente -> OP-CONF-01, volume = saida
   const sf=(await DB.ref('retorno_app/saida_fornecedores').once('value')).val()||{};
   Object.entries(sf).forEach(([id,r])=>{
@@ -2906,7 +2942,7 @@ async function pvxPreview(){
       if(jaMig.has(c.origemKey)) return;
       const norm=pvxMatDoNome(c.nomeGod), pvxMat=norm?pvxByNorm[norm]:null;
       if(!pvxMat){ if(!unmatch[c.nomeGod])unmatch[c.nomeGod]={ap:0,vol:0}; unmatch[c.nomeGod].ap++; unmatch[c.nomeGod].vol+=c.volume; return; }
-      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,rec:0,conf:0,tri:0,mov:0,exp:0,ap:0,vol:0};
+      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,rec:0,conf:0,tri:0,mov:0,exp:0,flor:0,ap:0,vol:0};
       porCol[pvxMat][c.grupo]+=c.volume; porCol[pvxMat].ap++; porCol[pvxMat].vol+=c.volume;
       totNovos++; totVol+=c.volume;
     });
@@ -2921,19 +2957,23 @@ function pvxRenderPreview(){
   const {porCol,unmatch,totNovos,totVol}=_pvxCands;
   const cols=Object.values(porCol).sort((a,b)=>b.vol-a.vol);
   const nUn=Object.values(unmatch).reduce((s,u)=>s+u.ap,0);
+  const volFlor=cols.reduce((s,c)=>s+(c.flor||0),0);
   $('pvxCards').style.display='grid';
   $('pvxCards').innerHTML=
     `<div class="kcard ok"><div class="klbl">Apontamentos novos</div><div class="kval">${totNovos}</div><div class="ksub">a criar no ProdutiVix</div></div>`
    +`<div class="kcard inf"><div class="klbl">Volume total</div><div class="kval">${totVol}</div><div class="ksub">soma migrada</div></div>`
    +`<div class="kcard inf"><div class="klbl">Colaboradores</div><div class="kval">${cols.length}</div><div class="ksub">recebem volume</div></div>`
+   +`<div class="kcard ${volFlor?'wrn':'inf'}"><div class="klbl">Carrinho de Flor</div><div class="kval">${volFlor}</div><div class="ksub">OP-TRI-02 automático</div></div>`
    +`<div class="kcard ${nUn?'dng':'ok'}"><div class="klbl">Sem matrícula</div><div class="kval">${nUn}</div><div class="ksub">volume perdido</div></div>`;
   $('pvxPrevBox').style.display='block';
   $('pvxPrevCnt').textContent=cols.length+' colaboradores';
   $('pvxPrevBody').innerHTML=cols.length?cols.map(c=>
     `<tr><td title="${c.nome}">${c.nome.length>28?c.nome.substring(0,28)+'…':c.nome}</td><td>${c.mat}</td>`
-   +`<td style="text-align:center">${c.rec||'—'}</td><td style="text-align:center">${c.conf||'—'}</td><td style="text-align:center">${c.tri||'—'}</td><td style="text-align:center">${c.mov||'—'}</td><td style="text-align:center">${c.exp||'—'}</td>`
+   +`<td style="text-align:center">${c.rec||'—'}</td><td style="text-align:center">${c.conf||'—'}</td><td style="text-align:center">${c.tri||'—'}</td>`
+   +`<td style="text-align:center">${c.flor||'—'}</td>`
+   +`<td style="text-align:center">${c.mov||'—'}</td><td style="text-align:center">${c.exp||'—'}</td>`
    +`<td style="text-align:center"><strong>${c.vol}</strong></td><td style="text-align:center">${c.ap}</td></tr>`
-  ).join(''):'<tr><td colspan="9"><div class="empty">Nada novo a migrar</div></td></tr>';
+  ).join(''):'<tr><td colspan="10"><div class="empty">Nada novo a migrar</div></td></tr>';
   const uns=Object.entries(unmatch).sort((a,b)=>b[1].vol-a[1].vol);
   $('pvxUnmatchBox').style.display=uns.length?'block':'none';
   $('pvxUnmatchCnt').textContent=uns.length+' nomes';
@@ -3263,5 +3303,5 @@ document.addEventListener('click',e=>{
 
 
 
-<script>console.log("%cGODMODE BUILD-CHECK v34 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
+<script>console.log("%cGODMODE BUILD-CHECK v35 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
 </body></html>

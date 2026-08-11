@@ -2111,11 +2111,17 @@ async function enviarParaPaletCD(base, linhas) {
     };
     const lojaNome = NOMES_LOJA[numLoja] || String(numLoja);
 
-    // 3a. Delta-direct em est.TriagemFila (transação por modelo). NUNCA toca est.Lojas.
+    // 3a. Delta-direct por modelo, espelhando o doRetornoLoja do PaletCD:
+    //     est.Lojas  -= q   (o palete deixa a posse da loja)
+    //     est.TriagemFila += q   (entra na fila de triagem do CD)
+    //     Antes só o TriagemFila era incrementado, o que deixava o saldo das
+    //     lojas crescendo sem baixa. O Math.max protege contra negativo, igual
+    //     ao clamp usado no resto do PaletCD.
     const MODELOS_PALET = ['PBR','DESCARTAVEL','CHEP','EURO','CHEP_EURO','GAIOLA'];
     for (const k of MODELOS_PALET) {
       const q = modelos[k] || 0;
       if (!q) continue;
+      await root.child('est/Lojas/' + k).transaction(cur => Math.max(0, (cur || 0) - q));
       await root.child('est/TriagemFila/' + k).transaction(cur => (cur || 0) + q);
     }
 
@@ -2130,7 +2136,9 @@ async function enviarParaPaletCD(base, linhas) {
     const novoMov = {
       id, tipo:'Retorno de Loja', origem: lojaNome, destino:'Triagem',
       loja: numLoja, forn:'', qtd: total,
-      usuario:'Log. Reversa', obs: base.nota_fiscal ? 'NF: ' + base.nota_fiscal : '',
+      usuario:'Log. Reversa',
+      nf: base.nota_fiscal || '',
+      obs: '',
       modelos, ts, nMov
     };
     // CONFIRMAR shape de movs no seu v2: aqui grava como filho keyed por id (movs/MOV-00042)

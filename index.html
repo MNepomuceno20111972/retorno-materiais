@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v36
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v38
+     v38: cache em IndexedDB (localStorage estourava a cota de 5MB e fazia
+          triagem/saida baixarem completos em toda abertura), medidor fbUso(),
+          carga sob demanda da Saida de Fornecedores, filtro no servidor no
+          pvxBuildCandidates, revalidacao diaria e timeout de inatividade.
      v36: inclusao de 2 colaboradores (GABRIEL DA SILVA FONSECA / MARCOS ANTONIO SILVA DA ROCHA)
      v35: triagem automatica de CARRINHO DE FLOR -> OP-TRI-02 no ProdutiVix
      NAO SALVAR PELO NAVEGADOR (Ctrl+S). Isso grava o DOM e os dados.
@@ -109,6 +113,16 @@ tr:hover td{background:#F4F2EA}
 .ldr{display:inline-block;width:14px;height:14px;border:2px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:sp .6s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(max-width:700px){nav{display:none}.kgrid{grid-template-columns:1fr 1fr}.cgrid{grid-template-columns:1fr}.fg{grid-template-columns:1fr}.fg .s2{grid-column:span 1}}
+/* ===== TIMEOUT DE INATIVIDADE ===== */
+.idlebx{position:fixed;inset:0;background:rgba(31,30,29,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:9999}
+.idlecd{background:var(--card);border:1px solid var(--bdr);border-radius:var(--rl);padding:28px 32px;max-width:400px;text-align:center;box-shadow:var(--sh2)}
+.idlecd h3{font-size:16px;font-weight:600;margin-bottom:8px}
+.idlecd p{font-size:13px;color:var(--mut);margin-bottom:6px;line-height:1.5}
+.idlecd .num{font-size:36px;font-weight:700;color:var(--amb);display:block;margin:10px 0 16px}
+.lockbx{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:10000}
+.lockbx .ic{font-size:44px}
+.lockbx h2{font-size:18px;font-weight:600}
+.lockbx p{font-size:13px;color:var(--mut);max-width:360px;text-align:center;line-height:1.5}
 </style>
 </head>
 <body>
@@ -1036,10 +1050,12 @@ async function initFirebase() {
     DB = firebase.database();
     fbReady = true;
     sts('Conectando...', 'a');
+    await cacheBootstrap();   // carrega o cache do IndexedDB
     await loadData();
   } catch(e) {
     console.error('Firebase erro:', e);
     sts('Erro Firebase', 'r');
+    if(!_cacheOk){ try{ await cacheBootstrap(); }catch(e2){} }
     loadCache();
   }
 }
@@ -1082,30 +1098,122 @@ const SYNC_CFG = {
   sf : {node:'retorno_app/saida_fornecedores',campoData:'data',             cache:'sf_full'}
 };
 
+// ===== CACHE PERSISTENTE (IndexedDB) =====
+// PROBLEMA RESOLVIDO NA v38: localStorage tem teto de ~5MB por dominio.
+// Com ~9.5k registros o node de retorno sozinho ocupava 4.2MB e estourava a
+// cota. Triagem e Saida nunca conseguiam gravar, o catch engolia o erro em
+// silencio, e TODO boot virava "carga completa" nesses dois nodes.
+// IndexedDB nao tem esse teto (centenas de MB).
+const IDB_NAME='godmode_cache', IDB_STORE='sync';
+let _IDB=null;
+const _MEM={};   // espelho em memoria: mantem syncLer/syncGravar sincronos
+
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    if(!window.indexedDB) return rej(new Error('sem indexedDB'));
+    const r=indexedDB.open(IDB_NAME,1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains(IDB_STORE)) r.result.createObjectStore(IDB_STORE); };
+    r.onsuccess=()=>res(r.result);
+    r.onerror  =()=>rej(r.error);
+  });
+}
+function idbGet(k){
+  return new Promise(res=>{
+    if(!_IDB) return res(null);
+    try{
+      const q=_IDB.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(k);
+      q.onsuccess=()=>res(q.result||null);
+      q.onerror  =()=>res(null);
+    }catch(e){ res(null); }
+  });
+}
+function idbPut(k,v){
+  return new Promise(res=>{
+    if(!_IDB) return res(false);
+    try{
+      const t=_IDB.transaction(IDB_STORE,'readwrite');
+      t.objectStore(IDB_STORE).put(v,k);
+      t.oncomplete=()=>res(true);
+      t.onerror   =()=>res(false);
+      t.onabort   =()=>res(false);
+    }catch(e){ res(false); }
+  });
+}
+function idbDel(k){
+  return new Promise(res=>{
+    if(!_IDB) return res(false);
+    try{
+      const t=_IDB.transaction(IDB_STORE,'readwrite');
+      t.objectStore(IDB_STORE).delete(k);
+      t.oncomplete=()=>res(true);
+      t.onerror   =()=>res(false);
+    }catch(e){ res(false); }
+  });
+}
+
+// Carrega os 3 caches para a memoria. Roda ANTES do primeiro loadData().
+async function cacheBootstrap(){
+  try{ _IDB=await idbOpen(); }
+  catch(e){ _IDB=null; console.warn('IndexedDB indisponivel. Seguindo sem cache local.'); }
+  for(const k in SYNC_CFG){
+    _MEM[k]=await idbGet(k);
+    // Migracao unica: aproveita o que ja existe no localStorage antes de limpar
+    if(!_MEM[k]){
+      try{
+        const raw=localStorage.getItem(SYNC_CFG[k].cache);
+        if(raw){ _MEM[k]=JSON.parse(raw); await idbPut(k,_MEM[k]); }
+      }catch(e){}
+    }
+    try{ localStorage.removeItem(SYNC_CFG[k].cache); }catch(e){}  // libera a cota
+  }
+  // rm_c / tri_c / sf_c eram copias duplicadas dos mesmos dados dentro do
+  // localStorage. Somadas ao cache principal, estouravam a cota de 5MB.
+  ['rm_c','tri_c','sf_c'].forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+  _cacheOk=true;
+}
+let _cacheOk=false;
+
+// Revalidacao diaria.
+// O sync incremental busca por created_at: registro EDITADO ou EXCLUIDO por
+// outro operador nunca volta. Sem isso o cache ficaria velho para sempre.
+// Custo: 1 carga completa por dia por maquina, em vez de ~60.
+function precisaRevalidar(chave){
+  try{ return localStorage.getItem('full_'+chave)!==hojeLocal(); }catch(e){ return false; }
+}
+function marcarRevalidado(chave){
+  try{ localStorage.setItem('full_'+chave, hojeLocal()); }catch(e){}
+}
+
+// ===== MEDIDOR DE CONSUMO =====
+// Mede o payload real de cada leitura. Rode fbUso() no console (F12).
+const FBU={reads:0,bytes:0,det:[]};
+function fbLog(rotulo,snap){
+  let b=0;
+  try{ b=new Blob([JSON.stringify(snap.val()||{})]).size; }catch(e){ b=0; }
+  FBU.reads++; FBU.bytes+=b;
+  FBU.det.push({leitura:rotulo, KB:+(b/1024).toFixed(1)});
+  return snap;
+}
+function fbUso(){
+  console.table(FBU.det);
+  const mb=FBU.bytes/1048576;
+  console.log('SESSAO: '+FBU.reads+' leituras - '+mb.toFixed(2)+' MB');
+  console.log('Projecao 60 aberturas/dia x 22 dias: '+(mb*60*22/1024).toFixed(2)+' GB/mes');
+  return {leituras:FBU.reads, mb:+mb.toFixed(3)};
+}
+window.fbUso=fbUso;
+
 function syncLer(chave){
-  try{
-    const raw=localStorage.getItem(SYNC_CFG[chave].cache);
-    if(!raw) return null;
-    const o=JSON.parse(raw);
-    if(!o || !Array.isArray(o.itens)) return null;
-    if(Number(o.janela)!==Number(JANELA_DIAS)) return null; // janela mudou, recarrega
-    return o;
-  }catch(e){ return null; }
+  const o=_MEM[chave];
+  if(!o || !Array.isArray(o.itens)) return null;
+  if(Number(o.janela)!==Number(JANELA_DIAS)) return null; // janela mudou, recarrega
+  return o;
 }
 
 function syncGravar(chave, itens, ultimoTs){
-  try{
-    localStorage.setItem(SYNC_CFG[chave].cache, JSON.stringify({
-      janela:Number(JANELA_DIAS), ts:ultimoTs, itens:itens
-    }));
-  }catch(e){
-    // localStorage cheio: descarta metade mais antiga e tenta de novo
-    try{
-      localStorage.setItem(SYNC_CFG[chave].cache, JSON.stringify({
-        janela:Number(JANELA_DIAS), ts:ultimoTs, itens:itens.slice(0,Math.floor(itens.length/2))
-      }));
-    }catch(e2){}
-  }
+  const o={janela:Number(JANELA_DIAS), ts:ultimoTs, itens:itens};
+  _MEM[chave]=o;
+  idbPut(chave,o);   // assincrono de proposito: nao trava a tela
 }
 
 // Aplica uma edicao direto no cache incremental.
@@ -1167,20 +1275,23 @@ function maiorTs(itens){
 async function syncJanela(chave){
   const cfg=SYNC_CFG[chave];
   const corte=dataCorte();
-  const cache=syncLer(chave);
+  // 1 carga completa por dia POR NODE, para capturar edicoes e exclusoes
+  // feitas por outros operadores (o incremental so enxerga created_at).
+  const cache=precisaRevalidar(chave) ? null : syncLer(chave);
 
-  // --- Sem cache: carga completa da janela (acontece 1x) ---
+  // --- Sem cache (ou revalidacao do dia): carga completa da janela ---
   if(!cache || !cache.ts){
-    const snap=await DB.ref(cfg.node).orderByChild(cfg.campoData).startAt(corte).once('value');
+    const snap=fbLog(chave+':completa', await DB.ref(cfg.node).orderByChild(cfg.campoData).startAt(corte).once('value'));
     const itens=Object.values(snap.val()||{});
     syncGravar(chave, itens, maiorTs(itens));
+    marcarRevalidado(chave);   // so marca depois que deu certo
     _syncInfo[chave]={modo:'completa', baixados:itens.length, total:itens.length};
     return itens;
   }
 
   // --- Com cache: pede so o que foi criado depois da ultima sync ---
-  const snap=await DB.ref(cfg.node)
-    .orderByChild('created_at').startAt(cache.ts).once('value');
+  const snap=fbLog(chave+':incremental', await DB.ref(cfg.node)
+    .orderByChild('created_at').startAt(cache.ts).once('value'));
   const novos=Object.values(snap.val()||{});
 
   // funde por id (o startAt e inclusivo, entao o ultimo registro vem repetido)
@@ -1205,8 +1316,10 @@ function syncResumo(){
 }
 
 // Forca recarga total (usar quando desconfiar do cache)
-function syncLimpar(){
-  for(const k in SYNC_CFG) localStorage.removeItem(SYNC_CFG[k].cache);
+async function syncLimpar(){
+  for(const k in SYNC_CFG){ _MEM[k]=null; await idbDel(k); }
+  for(const k in SYNC_CFG){ try{ localStorage.removeItem('full_'+k); }catch(e){} }
+  ['rm_c','tri_c','sf_c','rm_lastFull'].forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
   ntfy('Cache limpo. Recarregando do servidor...','ok');
   loadData();
 }
@@ -1217,11 +1330,14 @@ async function loadData() {
     _syncInfo={};
     const lista = await syncJanela('rm');
     ALL = lista.sort((a,b) => (b.data||'') > (a.data||'') ? 1 : -1);
-    try { localStorage.setItem('rm_c', JSON.stringify(ALL.slice(0,2000))); } catch(e) {}
     FILT = [...ALL];
     refreshAll();
     await loadTriData();
-    await loadSfData();
+    // Saida de Fornecedores saiu do boot: carrega sob demanda em ensureSf().
+    // Triagem CONTINUA no boot de proposito: upsertTriagem() procura a linha
+    // existente dentro de TRI_ALL. Com o array vazio ele criaria uma linha
+    // nova em vez de atualizar, gerando duplicidade na triagem.
+    if(_sfCarregado) await loadSfData();
     const r=syncResumo();
     sts('Firebase — ' + ALL.length + ' reg. (' + JANELA_DIAS + 'd) · ' +
         (r.modo==='completa' ? 'carga completa' : '+' + r.baixados + ' novos'), 'g');
@@ -1231,12 +1347,22 @@ async function loadData() {
   }
 }
 
+// Carga sob demanda da Saida de Fornecedores
+let _sfCarregado=false;
+async function ensureSf(){
+  if(_sfCarregado) return;
+  _sfCarregado=true;
+  await loadSfData();
+}
+
 function loadCache() {
-  try { const c = localStorage.getItem('rm_c'); if(c) ALL = JSON.parse(c); } catch(e) { ALL = []; }
+  try { ALL = (_MEM.rm && Array.isArray(_MEM.rm.itens)) ? [..._MEM.rm.itens] : []; }
+  catch(e) { ALL = []; }
   if (ALL.length) sts('Offline — ' + ALL.length + ' reg', 'a');
   else sts('Aguardando Firebase...', 'a');
   FILT = [...ALL]; refreshAll();
-  loadTriData(); loadSfData();
+  loadTriData();
+  if(_sfCarregado) loadSfData();
 }
 
 async function fbSaveRec(rec) {
@@ -1272,8 +1398,8 @@ function go(p){
   if(p==='div'){renderDiv()}
   if(p==='rank'){renderRank()}
   if(p==='dash'){renderDash()}
-  if(p==='sf'){SF_FILT=[...SF_ALL];renderSfTbl()}
-  if(p==='sfdash'){renderSfDash()}
+  if(p==='sf'){ ensureSf().then(()=>{SF_FILT=[...SF_ALL];renderSfTbl();}); }
+  if(p==='sfdash'){ ensureSf().then(renderSfDash); }
   if(p==='pvx'){pvxReset()}
   $('nav-admout').style.display=isAdmin()?'':'none';
 }
@@ -1647,7 +1773,7 @@ async function savRec(){
     rec.id = crypto.randomUUID();
     rec.created_at = new Date().toISOString();
     if(fbReady){ await fbSaveRec(rec); }
-    else { ALL.unshift(rec); try{localStorage.setItem('rm_c',JSON.stringify(ALL.slice(0,2000)))}catch(e){} }
+    else { ALL.unshift(rec); try{ if(_MEM.rm){ _MEM.rm.itens=ALL; idbPut('rm',_MEM.rm); } }catch(e){} }
   }
   ntfy(recs.length+' materiais registrados!','ok');
   upsertTriagem(base, linhas);
@@ -1817,10 +1943,17 @@ const TRI_PS=25;
 
 // Carrega triagem do localStorage
 function loadTriCache(){
-  try{const c=localStorage.getItem('tri_c');if(c)TRI_ALL=JSON.parse(c);}catch(e){TRI_ALL=[];}
+  // v38: le do espelho em memoria (IndexedDB). O antigo 'tri_c' era uma
+  // segunda copia dos mesmos dados dentro do localStorage e ajudava a
+  // estourar a cota de 5MB.
+  try{ TRI_ALL = (_MEM.tri && Array.isArray(_MEM.tri.itens)) ? [..._MEM.tri.itens] : []; }
+  catch(e){ TRI_ALL=[]; }
 }
 function saveTriCache(){
-  try{localStorage.setItem('tri_c',JSON.stringify(TRI_ALL.slice(0,3000)));}catch(e){}
+  // syncGravar() ja persiste no IndexedDB. Aqui so mantemos o espelho de
+  // memoria coerente apos edicoes locais na triagem.
+  try{ if(_MEM.tri) _MEM.tri.itens = TRI_ALL; }catch(e){}
+  try{ localStorage.removeItem('tri_c'); }catch(e){}
 }
 
 // Carrega triagem do Supabase
@@ -2451,11 +2584,13 @@ async function doFornMerge(){
 // ===================== FIM UNIFICAR FORNECEDORES =====================
 
 function loadSfCache(){
-  try{const c=localStorage.getItem('sf_c');if(c)SF_ALL=JSON.parse(c);}catch(e){SF_ALL=[];}
+  try{ SF_ALL = (_MEM.sf && Array.isArray(_MEM.sf.itens)) ? [..._MEM.sf.itens] : []; }
+  catch(e){ SF_ALL=[]; }
   sfBuildFornList();
 }
 function saveSfCache(){
-  try{localStorage.setItem('sf_c',JSON.stringify(SF_ALL.slice(0,3000)));}catch(e){}
+  try{ if(_MEM.sf) _MEM.sf.itens = SF_ALL; }catch(e){}
+  try{ localStorage.removeItem('sf_c'); }catch(e){}
 }
 
 async function loadSfData(){
@@ -2854,7 +2989,7 @@ async function pvxInit(){
 }
 async function pvxLoad(){
   await pvxInit();
-  const snap=await PVX_DB.ref(PVX_NODE).once('value');
+  const snap=fbLog('pvx:base', await PVX_DB.ref(PVX_NODE).once('value'));
   return snap.val();
 }
 async function pvxSave(S){
@@ -2879,7 +3014,10 @@ function pvxReset(){
 async function pvxBuildCandidates(){
   const cutoff=PVX_CUTOFF, dOf=v=>String(v||'').substring(0,10), cand=[];
   // RETORNO: operador_carga -> OP-REC-02, conferente -> OP-CONF-01, volume = soma qtd_fisica por retorno (data/loja/NF)
-  const ret=(await DB.ref('retorno_app/retorno_materiais').once('value')).val()||{};
+  // v38: filtro no SERVIDOR. Antes baixava o node INTEIRO (todo o historico)
+  // e descartava o que era anterior ao cutoff dentro do navegador.
+  const ret=(fbLog('pvx:ret', await DB.ref('retorno_app/retorno_materiais')
+    .orderByChild('data').startAt(cutoff).once('value'))).val()||{};
   const evt={};
   Object.values(ret).forEach(r=>{
     const d=dOf(r.data); if(!d||d<cutoff) return;
@@ -2895,7 +3033,8 @@ async function pvxBuildCandidates(){
     if(e.cf) cand.push({nomeGod:e.cf,atCod:'OP-CONF-01',grupo:'conf',volume:e.vol,data:e.data,origemKey:k+'|CONF'});
   });
   // TRIAGEM: triagem -> OP-TRI-01, movimentação -> OP-MOV-01, volume = qtd_caixas
-  const tri=(await DB.ref('retorno_app/triagem').once('value')).val()||{};
+  const tri=(fbLog('pvx:tri', await DB.ref('retorno_app/triagem')
+    .orderByChild('data_recebimento').startAt(cutoff).once('value'))).val()||{};
   Object.entries(tri).forEach(([id,t])=>{
     const d=dOf(t.data_triagem||t.data_recebimento); if(!d||d<cutoff) return;
     const v=Number(t.qtd_caixas)||0; if(v<=0) return;
@@ -2920,7 +3059,8 @@ async function pvxBuildCandidates(){
     });
   });
   // SF: movimentação -> OP-MOV-01, conferente -> OP-CONF-01, volume = saida
-  const sf=(await DB.ref('retorno_app/saida_fornecedores').once('value')).val()||{};
+  const sf=(fbLog('pvx:sf', await DB.ref('retorno_app/saida_fornecedores')
+    .orderByChild('data').startAt(cutoff).once('value'))).val()||{};
   Object.entries(sf).forEach(([id,r])=>{
     const d=dOf(r.data); if(!d||d<cutoff) return;
     const v=Number(r.saida)||0; if(v<=0) return;
@@ -2936,6 +3076,7 @@ async function pvxPreview(){
   if(!DB){alert('Firebase não conectado.');return;}
   $('pvxStatus').textContent='Lendo registros e o ProdutiVix...';
   try{
+    await ensureSf();   // SF nao vem mais no boot; a migracao depende dele
     const cand=await pvxBuildCandidates();
     const S=await pvxLoad()||{colaboradores:[],apontamentos:[]};
     const pvxByNorm={}; (S.colaboradores||[]).forEach(c=>{pvxByNorm[pvxNormMat(c.mat)]=c.mat;});
@@ -3306,5 +3447,69 @@ document.addEventListener('click',e=>{
 
 
 
-<script>console.log("%cGODMODE BUILD-CHECK v36 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
+<div class="idlebx" id="idleBox">
+  <div class="idlecd">
+    <h3>Você ainda está aí?</h3>
+    <p>A sessão vai ser encerrada por inatividade.</p>
+    <span class="num" id="idleSeg">60</span>
+    <button class="btn pri" onclick="idleContinuar()">Continuar trabalhando</button>
+  </div>
+</div>
+
+<div class="lockbx" id="lockBox">
+  <div class="ic">🔒</div>
+  <h2>Sessão encerrada por inatividade</h2>
+  <p>Nada foi perdido. Todo lançamento salvo já está gravado no Firebase.</p>
+  <button class="btn pri" onclick="location.reload()">Reabrir o app</button>
+</div>
+
+<script>
+// ===== TIMEOUT DE INATIVIDADE (v38) =====
+// Minutos ate o aviso. Ajustavel por maquina, sem mexer no codigo:
+//   localStorage.setItem('rm_idle', 30)
+const IDLE_MIN   = Number(localStorage.getItem('rm_idle') || 20);
+const IDLE_AVISO = 60;   // segundos de contagem regressiva
+let _idleT=null, _idleCd=null, _idleOff=false;
+
+function idleReset(){
+  if(_idleOff || _idleCd) return;         // ja bloqueado, ou ja em contagem
+  clearTimeout(_idleT);
+  _idleT=setTimeout(idleAvisar, IDLE_MIN*60*1000);
+}
+function idleAvisar(){
+  const box=document.getElementById('idleBox'), num=document.getElementById('idleSeg');
+  if(!box) return;
+  let s=IDLE_AVISO;
+  box.style.display='flex'; num.textContent=s;
+  _idleCd=setInterval(()=>{
+    s--; num.textContent=s;
+    if(s<=0) idleBloquear();
+  },1000);
+}
+function idleContinuar(){
+  clearInterval(_idleCd); _idleCd=null;
+  document.getElementById('idleBox').style.display='none';
+  idleReset();
+}
+async function idleBloquear(){
+  clearInterval(_idleCd); _idleCd=null;
+  clearTimeout(_idleT);
+  _idleOff=true;
+  // Derruba a sessao admin. Esse e o ponto do timeout: seguranca.
+  try{ _admOk=false; _admCred=null; }catch(e){}
+  try{ const a=admApp(); if(a) await a.auth().signOut(); }catch(e){}
+  // NAO limpar o IndexedDB nem o rm_lastFull. Esse cache e o que evita uma
+  // carga completa na retomada. Limpar aqui faria o timeout AUMENTAR o consumo.
+  document.getElementById('idleBox').style.display='none';
+  document.getElementById('lockBox').style.display='flex';
+}
+['mousemove','mousedown','keydown','touchstart','scroll','click']
+  .forEach(ev=>document.addEventListener(ev, idleReset, {passive:true}));
+// Voltar para a aba conta como atividade. Aba em segundo plano NAO pausa o
+// relogio: aba esquecida aberta e exatamente o caso que queremos pegar.
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) idleReset(); });
+idleReset();
+</script>
+
+<script>console.log("%cGODMODE BUILD-CHECK v38 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
 </body></html>

@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v38
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v39
+     v39: populateExpLoja() agora usa LOJAS (LOJAS_DATA) em vez de ALL —
+          lojas novas (140-151 e 128) aparecem no filtro de Exportar CSV
+          mesmo sem registros ainda no Firebase. Select eLj populado no INIT.
      v38: cache em IndexedDB (localStorage estourava a cota de 5MB e fazia
           triagem/saida baixarem completos em toda abertura), medidor fbUso(),
           carga sob demanda da Saida de Fornecedores, filtro no servidor no
@@ -463,7 +466,7 @@ tr:hover td{background:#F4F2EA}
     <div class="fg" style="margin-bottom:14px">
       <div class="fld"><label>Data início</label><input type="date" id="eIni"></div>
       <div class="fld"><label>Data fim</label><input type="date" id="eFim"></div>
-      <div class="fld s2"><label>Loja (opcional)</label><select id="eLj"><option value="">Todas</option><option>1 - CAROLINA</option><option>100 - CD BRASÍLIA</option><option>104 - INDAIATUBA</option><option>107 - AMERICANA 2</option><option>108 - LIMEIRA</option><option>11 - BUTANTA</option><option>12 - IBITIRAMA</option><option>121 - ARBORAIS</option><option>122 - BAURU</option><option>123 - NOVA CANTAREIRA</option><option>127 - FRANCA</option><option>128 - URBANOVA</option><option>13 - MOEMA</option><option>134 - DAMHA</option><option>135 - VILA MARIANA 2</option><option>136 - SÃO CARLOS</option><option>139 - ITAIM BIBI 2</option><option>14 - PENHA</option><option>15 - SANTANA PUJOL</option><option>17 - THE MALL</option><option>19 - MORUMBI</option><option>2 - PONTE PRETA</option><option>21 - CENTRO</option><option>23 - CAMBUÍ</option><option>24 - SANTANA ATALIBA</option><option>25 - SANTANA TOLLE</option><option>26 - SOROCABA 2</option><option>29 - MOOCA</option><option>3 - BONFIM</option><option>30 - PIRACICABA</option><option>31 - SOUSAS</option><option>32 - VILA MARIANA</option><option>33 - GALLERIA</option><option>34 - ANÁLIA FRANCO</option><option>35 - SÃO JOSÉ DOS CAMPOS</option><option>36 - ANGELICA</option><option>37 - TEODORO SAMPAIO</option><option>38 - RIBEIRÃO PRETO</option><option>39 - INTERLAGOS</option><option>40 - MARKET PLACE</option><option>41 - LEOPOLDINA</option><option>42 - SANTO ANDRÉ</option><option>43 - PERDIZES</option><option>5 - AMOREIRAS</option><option>55 - CAMPO BELO</option><option>56 - VILA MASCOTE</option><option>57 - JUNDIAI</option><option>6 - AMERICANA</option><option>64 - ALPHAVILLE BARUERI</option><option>65 - RIBEIRÃO PRETO 2</option><option>67 - SÃO BERNARDO</option><option>69 - ALPHAVILLE</option><option>70 - FRIGORIFICO</option><option>71 - APUCARANA</option><option>72 - SHOPPING TATUAPÉ</option><option>73 - CAMBUI 2</option><option>74 - ITAIM BIBI</option><option>75 - NOVA CAMPINAS</option><option>76 - SANTOS</option><option>79 - SOROCABA 3</option><option>80 - ITU</option><option>81 - PAMPLONA</option><option>86 - SÃO JOSÉ DO RIO PRETO</option><option>87 - ITATIBA</option><option>88 - GRANJA VIANA</option><option>9 - TATUAPÉ</option><option>92 - RESTAURANTE</option><option>99 - PRODUÇÃO</option></select></div>
+      <div class="fld s2"><label>Loja (opcional)</label><select id="eLj"><option value="">Todas</option></select></div>
     </div>
     <button class="btn pri" onclick="expCSV()">⬇️ Baixar CSV</button>
   </div>
@@ -1922,8 +1925,9 @@ function expCSV(){
 }
 
 function populateExpLoja(){
-  const ls=[...new Set(ALL.map(r=>r.loja).filter(Boolean))].sort();
-  $('eLj').innerHTML='<option value="">Todas</option>'+ls.map(l=>`<option>${l}</option>`).join('');
+  // Usa LOJAS (lista canônica do LOJAS_DATA, ordem numérica) para que
+  // lojas recém-cadastradas apareçam mesmo sem registros no Firebase.
+  $('eLj').innerHTML='<option value="">Todas</option>'+LOJAS.map(l=>`<option>${l}</option>`).join('');
 }
 
 // NOTIF
@@ -3414,6 +3418,7 @@ document.addEventListener('click',e=>{
 // INIT
 (function(){
   popSel();
+  populateExpLoja(); // popula eLj (Exportar) com todas as lojas do LOJAS_DATA, sem esperar Firebase
   buildMatGrid();
   chapaBadge();
   setTimeout(()=>chapaAsk(false),600);
@@ -3511,5 +3516,5 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) idleRese
 idleReset();
 </script>
 
-<script>console.log("%cGODMODE BUILD-CHECK v38 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
+<script>console.log("%cGODMODE BUILD-CHECK v39 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
 </body></html>

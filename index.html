@@ -2996,9 +2996,69 @@ async function pvxLoad(){
   const snap=fbLog('pvx:base', await PVX_DB.ref(PVX_NODE).once('value'));
   return snap.val();
 }
+/* ID a prova de colisao. O ProdutiVix grava no MESMO no a partir do
+   contador dele. Contador puro faz os dois emitirem a mesma faixa e um
+   sobrescrever o outro. Sequencial + sufixo aleatorio elimina isso. */
+function pvxNovoId(S){
+  let n=0;
+  if(Array.isArray(S.apontamentos)){
+    for(const a of S.apontamentos){
+      const v=parseInt(String(a.id||'').replace(/\D/g,''),10);
+      if(v>n)n=v;
+    }
+  }
+  n=Math.max(n,(S.nId||0))+1;
+  S.nId=n+1;
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s='';
+  for(let k=0;k<4;k++)s+=A.charAt(Math.floor(Math.random()*A.length));
+  return 'APT-'+String(n).padStart(5,'0')+'-'+s;
+}
+
+/* Antes: set(S) sobrescrevia o no INTEIRO com o snapshot lido no inicio da
+   migracao. Tudo que outra sessao gravasse nesse intervalo era apagado, sem
+   erro e sem aviso. Foi assim que 38 apontamentos de Higienizacao sumiram.
+
+   Agora: rele o estado atual imediatamente antes de gravar e mescla. Os
+   apontamentos que este processo criou sao adicionados; o que chegou de
+   outra origem no meio do caminho e preservado. */
 async function pvxSave(S){
   await pvxInit();
-  await PVX_DB.ref(PVX_NODE).set(S);
+  const atual=(await PVX_DB.ref(PVX_NODE).once('value')).val();
+
+  if(!atual||!Array.isArray(atual.apontamentos)){
+    await PVX_DB.ref(PVX_NODE).set(S);
+    return;
+  }
+
+  const porId=new Map(atual.apontamentos.map(a=>[a.id,a]));
+  const assin=new Set(atual.apontamentos.map(
+    a=>[a.mat,a.data,a.atCod,a.volume].join('|')));
+
+  let add=0;
+  for(const a of (S.apontamentos||[])){
+    if(porId.has(a.id))continue;
+    if(assin.has([a.mat,a.data,a.atCod,a.volume].join('|')))continue;
+    atual.apontamentos.push(a);
+    add++;
+  }
+
+  /* campos de cadastro seguem o snapshot local; apontamentos, nunca */
+  for(const k of ['colaboradores','atividades','params','ajustes',
+                  'ocorrencias','lojasCustom','vsa']){
+    if(S[k]!==undefined)atual[k]=S[k];
+  }
+
+  let mx=0;
+  for(const a of atual.apontamentos){
+    const v=parseInt(String(a.id||'').replace(/\D/g,''),10);
+    if(v>mx)mx=v;
+  }
+  atual.nId=mx+1;
+
+  await PVX_DB.ref(PVX_NODE).set(atual);
+  console.log('pvxSave: '+add+' novo(s) apontamento(s). Total: '
+              +atual.apontamentos.length);
 }
 // matrícula: tira zeros à esquerda; tudo-zero vira '0'; não-numérico em maiúsculo
 function pvxNormMat(m){m=String(m==null?'':m).trim();return (/^\d+$/.test(m))?(m.replace(/^0+/,'')||'0'):m.toUpperCase();}
@@ -3146,7 +3206,7 @@ async function pvxCommit(){
       if(jaMig.has(c.origemKey))return;
       const norm=pvxMatDoNome(c.nomeGod), pvxMat=norm?pvxByNorm[norm]:null;
       if(!pvxMat)return;
-      const id='APT-'+String(S.nId++).padStart(5,'0');
+      const id=pvxNovoId(S);
       S.apontamentos.unshift({id,mat:pvxMat,atCod:c.atCod,data:c.data,status:'Finalizada',volume:c.volume,ts:nowIso,tsFim:nowIso,origem:'GODMODE',origemKey:c.origemKey});
       jaMig.add(c.origemKey); criados++;
     });

@@ -2982,15 +2982,23 @@ async function pvxInit(){
   if(!_a.auth().currentUser){
     let ok=false;
     // 1) tenta as mesmas credenciais do login de admin
+    let _erroReal='';
     if(_admCred){
       try{ await _a.auth().signInWithEmailAndPassword(_admCred.em,_admCred.pw); ok=true; }
-      catch(e){ ok=false; }
+      catch(e){
+        ok=false;
+        _erroReal=(e&&(e.code||e.message))||'desconhecido';
+        console.error('PVX login falhou:',e&&e.code,e&&e.message,e);
+      }
+    }else{
+      _erroReal='sem credenciais guardadas (refaca o login de admin)';
     }
     // Sem fallback anonimo: o ProdutiVix exige admin real. Anonimo passaria no
     // login e so falharia na hora da escrita, escondendo a causa verdadeira.
     if(!ok) throw new Error(
-      'Sem acesso ao ProdutiVix. A conta ' + ((_admCred&&_admCred.em)||'atual') +
-      ' precisa existir no projeto produtividade-6d86f (Authentication > Users).');
+      'Sem acesso ao ProdutiVix [' + _erroReal + ']. Conta: ' +
+      ((_admCred&&_admCred.em)||'atual') + ' | projeto: produtividade-6d86f. ' +
+      'Veja o console (F12) para o erro completo.');
   }
 
   PVX_DB=_a.database();

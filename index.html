@@ -2659,15 +2659,15 @@ function srtSf(field){
 
 // Config do projeto do ProdutiVix (usada pelo login admin e pela migração)
 const PVX_CONFIG={
-  apiKey:'AIzaSyCxlvKWd03OB1MyTPmLra2YvUrorBJcNRI',
-  authDomain:'controle-de-paletes-c76d5.firebaseapp.com',
-  databaseURL:'https://controle-de-paletes-c76d5-default-rtdb.firebaseio.com',
-  projectId:'controle-de-paletes-c76d5'
+  apiKey:'AIzaSyBEP5g-MonZ22C_kS2d2h15o3UwPW-OJ2c',
+  authDomain:'produtividade-6d86f.firebaseapp.com',
+  databaseURL:'https://produtividade-6d86f-default-rtdb.firebaseio.com',
+  projectId:'produtividade-6d86f'
 };
 
 // ===== CONTROLE DE ACESSO ADMIN (Firebase Auth) =====
 // A conta de administrador é criada no Firebase Console do projeto
-// controle-de-paletes-c76d5 (Authentication > Users). A autorização real
+// produtividade-6d86f (Authentication > Users). A autorização real
 // é feita pelas RULES do Realtime Database (nó /admins/{uid} = true).
 const ADMIN_PAGES=['pvx','exp','cfg','audit'];
 
@@ -2944,7 +2944,11 @@ async function admLogout(){
 })();
 
 // ===== MIGRAÇÃO PRODUTIVIX =====
-const PVX_NODE='produtivix_v6';
+/* O ProdutiVix migrou para projeto proprio (produtividade-6d86f) e os dados
+   ficam na RAIZ do banco. '' = raiz. Se um dia voltar a usar subno, basta
+   colocar o nome aqui. */
+const PVX_NODE='';
+function pvxRef(){return PVX_NODE?PVX_DB.ref(PVX_NODE):PVX_DB.ref();}
 const PVX_CUTOFF='2026-07-01';
 let PVX_DB=null, _pvxCands=null;
 
@@ -2986,14 +2990,14 @@ async function pvxInit(){
     // login e so falharia na hora da escrita, escondendo a causa verdadeira.
     if(!ok) throw new Error(
       'Sem acesso ao ProdutiVix. A conta ' + ((_admCred&&_admCred.em)||'atual') +
-      ' precisa existir no projeto controle-de-paletes-c76d5 E estar no no /admins de la.');
+      ' precisa existir no projeto produtividade-6d86f (Authentication > Users).');
   }
 
   PVX_DB=_a.database();
 }
 async function pvxLoad(){
   await pvxInit();
-  const snap=fbLog('pvx:base', await PVX_DB.ref(PVX_NODE).once('value'));
+  const snap=fbLog('pvx:base', await pvxRef().once('value'));
   return snap.val();
 }
 /* ID a prova de colisao. O ProdutiVix grava no MESMO no a partir do
@@ -3024,10 +3028,10 @@ function pvxNovoId(S){
    outra origem no meio do caminho e preservado. */
 async function pvxSave(S){
   await pvxInit();
-  const atual=(await PVX_DB.ref(PVX_NODE).once('value')).val();
+  const atual=(await pvxRef().once('value')).val();
 
   if(!atual||!Array.isArray(atual.apontamentos)){
-    await PVX_DB.ref(PVX_NODE).set(S);
+    await pvxRef().set(S);
     return;
   }
 
@@ -3056,7 +3060,7 @@ async function pvxSave(S){
   }
   atual.nId=mx+1;
 
-  await PVX_DB.ref(PVX_NODE).set(atual);
+  await pvxRef().set(atual);
   console.log('pvxSave: '+add+' novo(s) apontamento(s). Total: '
               +atual.apontamentos.length);
 }

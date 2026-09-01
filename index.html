@@ -1,6 +1,23 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v39
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v40
+     v40: (a) trava de duplicidade no lancamento.
+              Retorno: mesma LOJA + mesmo n. de NF = BLOQUEIA, em qualquer data
+              (a loja nao emite a mesma NF duas vezes). Lojas diferentes com o
+              mesmo numero continuam passando. Se o documento for FICHA ou
+              ROMANEIO (a palavra escrita no campo), a regra vira AVISO quando
+              ja existe lancamento do mesmo tipo, mesma loja e mesmo dia.
+              Saida de Fornecedores: mesma DATA + FORNECEDOR + PRODUTO +
+              CONTROLE = BLOQUEIA. Vale no cadastro e na edicao.
+              Historico anterior a v40 nao e auditado: a trava so vale daqui.
+          (b) Bimbo automatico no ProdutiVix, a partir de 01/09/2026:
+              CAIXA BIMBO e CARRO DOLLY BIMBO viram apontamento de
+              VALMIR STOCCO MARTINS (03190611). Retorno -> OP-TRI-01 (triagem);
+              Saida de Fornecedores -> OP-MOV-01 (movimentacao).
+     v40.1: a movimentacao apontada no formulario da Saida continua valendo
+              normalmente, porque as vezes outro colaborador movimenta o Bimbo.
+              O automatico do Valmir soma so o volume que NAO foi apontado para
+              ele no formulario, para nao cair duas vezes na conta dele.
      v39: populateExpLoja() agora usa LOJAS (LOJAS_DATA) em vez de ALL —
           lojas novas (140-151 e 128) aparecem no filtro de Exportar CSV
           mesmo sem registros ainda no Firebase. Select eLj populado no INIT.
@@ -669,6 +686,13 @@ tr:hover td{background:#F4F2EA}
       🌸 <strong>Carrinho de Flor é automático.</strong> Todo volume que entra no dia vira OP-TRI-02
       para JOAQUIM DE SOUZA PIRES e OSMAR ROMAO CARDOSO, sem depender de apontamento na tela de Triagem.
       <br><br>
+      🍞 <strong>Bimbo é automático a partir de 01/09/2026.</strong> Caixa Bimbo e Carro Dolly Bimbo vão
+      para VALMIR STOCCO MARTINS: o que volta das lojas entra como OP-TRI-01 (triagem) e o que sai para o
+      fornecedor entra como OP-MOV-01 (movimentação). A movimentação apontada no formulário da Saída
+      continua valendo normalmente: se outro colaborador movimentou, ele recebe o volume dele. O
+      automático do Valmir soma só o que não foi apontado para ele no formulário, para não cair
+      duas vezes na conta dele.
+      <br><br>
       <strong>Sempre pré-visualize antes de confirmar.</strong> A confirmação grava direto na base do ProdutiVix.
     </div>
     <div style="padding:0 16px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -687,6 +711,7 @@ tr:hover td{background:#F4F2EA}
         <th style="text-align:center">Conferência</th>
         <th style="text-align:center">Triagem</th>
         <th style="text-align:center">Carrinho Flor</th>
+        <th style="text-align:center">Bimbo</th>
         <th style="text-align:center">Movimentação</th>
         <th style="text-align:center">Expedição</th>
         <th style="text-align:center">Total volume</th>
@@ -823,6 +848,18 @@ tr:hover td{background:#F4F2EA}
 </div>
 
 <!-- MODAL EDIÇÃO -->
+<!-- AVISO / BLOQUEIO DE DUPLICIDADE -->
+<div class="ov" id="dupMdl">
+  <div class="mdl" style="max-width:560px">
+    <div class="mh"><span class="mt" id="dupTit">Duplicidade</span></div>
+    <div class="mb">
+      <div id="dupMsg" style="font-size:13px;line-height:1.6;color:var(--txt)"></div>
+      <div id="dupReg" style="margin-top:12px;background:var(--bg3);border:1px solid var(--bdr2);border-left:3px solid var(--amb);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--mut);line-height:1.7"></div>
+    </div>
+    <div class="mf" id="dupFoot"></div>
+  </div>
+</div>
+
 <div class="ov" id="eMdl">
   <div class="mdl">
     <div class="mh"><span class="mt">Editar Registro</span><button class="btn" onclick="clsMdl()">✕</button></div>
@@ -1740,6 +1777,123 @@ function exigirAdmin(acao){
   return false;
 }
 
+// ===================== TRAVA DE DUPLICIDADE (v40) =====================
+/* Objetivo: impedir que o mesmo controle seja lancado duas vezes para a
+   mesma loja. O numero da nota sozinho NAO identifica nada: lojas diferentes
+   emitem o mesmo numero o tempo todo. A chave e sempre LOJA + DOCUMENTO.
+
+   Ficha e romaneio sao excecao porque chegam sem nota fiscal e o operador
+   escreve a palavra no campo. Ali a chave vira LOJA + TIPO + DIA e o
+   resultado e aviso, nao bloqueio: dois romaneios diferentes no mesmo dia
+   sao legitimos.
+
+   A varredura roda sobre o que ja esta carregado no navegador (janela de
+   JANELA_DIAS, 90 por padrao). Isso cobre o caso real, que e o relancamento
+   dentro de poucos dias. Uma nota reaproveitada fora da janela nao e vista
+   sem consulta extra ao Firebase, que exigiria indice novo nas Rules. */
+
+function dupEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function dupDia(v){return String(v||'').substring(0,10);}
+function dupBr(v){const d=dupDia(v);return d?d.split('-').reverse().join('/'):'—';}
+
+// FICHA / ROMANEIO / NF, pelo que o operador escreveu no campo
+function docTipo(v){
+  const s=String(v||'').toUpperCase();
+  if(s.indexOf('ROMANEIO')>=0)return 'ROMANEIO';
+  if(s.indexOf('FICHA')>=0)return 'FICHA';
+  return 'NF';
+}
+// '0308' e '308' e '308 ' sao o mesmo documento
+function docNorm(v){
+  return String(v==null?'':v).toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Z0-9]/g,'').replace(/^0+/,'');
+}
+// compara pelo numero da loja, nao pelo texto: se um dia o nome da loja
+// mudar, o historico continua batendo
+function lojaChave(v){
+  const m=String(v||'').match(/\d+/);
+  return m?String(Number(m[0])):String(v||'').trim().toUpperCase();
+}
+
+/* Procura lancamento anterior do mesmo documento para a mesma loja.
+   loteAtual: {loja,doc,data} a ignorar. Usado na edicao, porque um mesmo
+   lancamento gera uma linha por material e todas dividem loja + NF + data.
+   Sem isso, editar uma linha acusaria as linhas irmas como duplicata. */
+function achaDupRetorno(loja,nf,data,loteAtual){
+  const tipo=docTipo(nf),doc=docNorm(nf),lj=lojaChave(loja),dia=dupDia(data);
+  if(!lj)return null;
+  if(tipo==='NF'&&!doc)return null;
+  for(const r of (ALL||[])){
+    if(lojaChave(r.loja)!==lj)continue;
+    if(docTipo(r.nota_fiscal)!==tipo)continue;
+    const rdoc=docNorm(r.nota_fiscal),rdia=dupDia(r.data);
+    if(loteAtual&&rdoc===docNorm(loteAtual.doc)&&rdia===dupDia(loteAtual.data))continue;
+    if(tipo==='NF'){
+      if(rdoc===doc)return{reg:r,tipo:tipo,bloqueio:true};
+    }else{
+      if(rdia===dia)return{reg:r,tipo:tipo,bloqueio:false};
+    }
+  }
+  return null;
+}
+
+// Saida de Fornecedores: lancamento e unitario, entao varios no mesmo dia sao
+// normais. So bloqueia quando repete data + fornecedor + produto + controle.
+function achaDupSf(data,forn,mat,ctrl,idIgnorar){
+  const d=dupDia(data),f=String(forn||'').trim().toUpperCase(),
+        m=String(mat||'').trim().toUpperCase(),c=docNorm(ctrl);
+  for(const r of (SF_ALL||[])){
+    if(idIgnorar&&r.id===idIgnorar)continue;
+    if(dupDia(r.data)!==d)continue;
+    if(String(r.fornecedor||'').trim().toUpperCase()!==f)continue;
+    if(String(r.material||'').trim().toUpperCase()!==m)continue;
+    if(docNorm(r.controle)!==c)continue;
+    return r;
+  }
+  return null;
+}
+
+// Modal. Bloqueio: so fecha. Aviso: deixa o operador decidir.
+let _dupRes=null;
+function dupAsk(o){
+  $('dupTit').textContent=o.bloqueio?'⛔ Lançamento bloqueado':'⚠️ Possível duplicidade';
+  $('dupMsg').textContent=o.msg;
+  $('dupReg').innerHTML=o.detalhe||'';
+  $('dupFoot').innerHTML=o.bloqueio
+    ?'<button class="btn pri" onclick="dupFecha(false)">Entendi</button>'
+    :'<button class="btn" onclick="dupFecha(false)">Cancelar</button>'
+     +'<button class="btn pri" onclick="dupFecha(true)">Lançar mesmo assim</button>';
+  $('dupMdl').classList.add('open');
+  return new Promise(res=>{_dupRes=res});
+}
+function dupFecha(ok){
+  $('dupMdl').classList.remove('open');
+  const r=_dupRes;_dupRes=null;
+  if(r)r(!!ok);
+}
+
+function dupCardRetorno(r){
+  return '<strong>Lançamento que já existe</strong><br>'
+    +'Data: '+dupEsc(dupBr(r.data))+'<br>'
+    +'Loja: '+dupEsc(r.loja||'—')+'<br>'
+    +'Documento: '+dupEsc(r.nota_fiscal||'—')+'<br>'
+    +'Material: '+dupEsc(r.material||'—')
+    +' · Físico '+dupEsc(r.qtd_fisica==null?'-':r.qtd_fisica)
+    +' / NF '+dupEsc(r.qtd_nf==null?'-':r.qtd_nf)+'<br>'
+    +'Operador: '+dupEsc(r.operador_carga||'—')
+    +' · Conferente: '+dupEsc(r.conferente||'—');
+}
+function dupCardSf(r){
+  return '<strong>Lançamento que já existe</strong><br>'
+    +'Data: '+dupEsc(dupBr(r.data))+'<br>'
+    +'Fornecedor: '+dupEsc(r.fornecedor||'—')+'<br>'
+    +'Controle: '+dupEsc(r.controle||'—')+'<br>'
+    +'Produto: '+dupEsc(r.material||'—')+'<br>'
+    +'Entrada '+dupEsc(r.entrada==null?'-':r.entrada)
+    +' · Saída '+dupEsc(r.saida==null?'-':r.saida);
+}
+
 async function savRec(){
   const dt=$('nDt').value,lj=$('nLj').value;
   const nf=$('nNF').value.trim(),op=$('nOp').value,cf=$('nCf').value;
@@ -1750,6 +1904,25 @@ async function savRec(){
   if(/^\d+\.\d+$/.test(nf)){ntfy('Nota Fiscal inválida — use apenas números inteiros (ex: 308, não 3.08)','er');$('nNF').focus();return}
   if(!op){ntfy('Selecione o OPERADOR de carga','er');$('nOp').focus();return}
   if(!cf){ntfy('Selecione o CONFERENTE','er');$('nCf').focus();return}
+  // v40: trava de duplicidade por LOJA + DOCUMENTO
+  const _dup=achaDupRetorno(lj,nf,dt,null);
+  if(_dup){
+    if(_dup.bloqueio){
+      await dupAsk({bloqueio:true,
+        msg:'A nota fiscal '+nf+' já foi lançada para a loja '+lj+'. '
+           +'A loja não emite o mesmo número de nota duas vezes, então este '
+           +'lançamento seria duplicado. Confira o número antes de continuar.',
+        detalhe:dupCardRetorno(_dup.reg)});
+      $('nNF').focus();$('nNF').select();
+      return;
+    }
+    const _ok=await dupAsk({bloqueio:false,
+      msg:'Já existe lançamento de '+_dup.tipo.toLowerCase()+' para a loja '+lj
+         +' em '+dupBr(dt)+'. Como ficha e romaneio podem vir sem nota, isto '
+         +'pode ser um lançamento legítimo. Confira antes de seguir.',
+      detalhe:dupCardRetorno(_dup.reg)});
+    if(!_ok){$('nNF').focus();return}
+  }
   // coleta apenas materiais com alguma qtd preenchida
   // Pre-validacao: quantidade inteira em todos os materiais preenchidos
   for(const m of MATS_FORM){
@@ -1815,6 +1988,25 @@ async function updRec(){
   if(!cf){ntfy('CONFERENTE obrigatório','er');$('eCf').focus();return}
   if(qf && !validarQtdLimite(qf,'Qtd Físico'))return;
   if(qn && !validarQtdLimite(qn,'Qtd NF'))return;
+  // v40: mesma trava na edicao. O lote atual (loja + documento + data) fica
+  // de fora, senao as linhas irmas do proprio lancamento acusariam duplicata.
+  const _orig=ALL.find(x=>x.id===id)||{};
+  const _dupE=achaDupRetorno(lja,nf,dt,{doc:_orig.nota_fiscal,data:_orig.data});
+  if(_dupE){
+    if(_dupE.bloqueio){
+      await dupAsk({bloqueio:true,
+        msg:'A nota fiscal '+nf+' já está lançada para a loja '+lja
+           +' em outro registro. Ajuste o número antes de salvar a edição.',
+        detalhe:dupCardRetorno(_dupE.reg)});
+      $('eNF').focus();$('eNF').select();
+      return;
+    }
+    const _okE=await dupAsk({bloqueio:false,
+      msg:'Já existe outro lançamento de '+_dupE.tipo.toLowerCase()+' para a loja '
+         +lja+' em '+dupBr(dt)+'. Confira antes de salvar.',
+      detalhe:dupCardRetorno(_dupE.reg)});
+    if(!_okE){$('eNF').focus();return}
+  }
   const rec={data:dt,loja:lja,nota_fiscal:nf,
     material:$('eMt').value,qtd_fisica:qf,qtd_nf:qn,divergencia:(qf||0)-(qn||0),
     operador_carga:op,conferente:cf};
@@ -2967,6 +3159,19 @@ const FLOR_EQUIPE=[
   {mat:'02200717',nome:'OSMAR ROMAO CARDOSO'}
 ];
 
+// ===== BIMBO AUTOMATICO (v40) =====
+// Caixa e carro dolly Bimbo sao tratados por uma pessoa so, do retorno ate a
+// devolucao. Retorno de Materiais vira triagem (OP-TRI-01) e Saida de
+// Fornecedores vira movimentacao (OP-MOV-01), ambos para o Valmir, sem
+// depender de apontamento manual. Vale de 01/09/2026 em diante: o que passou
+// antes disso nao retroage.
+const BIMBO_MATS=['CAIXA BIMBO','CARRO DOLLY BIMBO'];
+const BIMBO_RET_ATCOD='OP-TRI-01';   // retorno das lojas -> triagem
+const BIMBO_SF_ATCOD ='OP-MOV-01';   // devolucao ao fornecedor -> movimentacao
+const BIMBO_CUTOFF='2026-09-01';
+const BIMBO_COLAB={mat:'03190611',nome:'VALMIR STOCCO MARTINS'};
+function ehBimbo(m){return BIMBO_MATS.indexOf(String(m||'').trim().toUpperCase())>=0;}
+
 // App Firebase secundário do ProdutiVix. Sem login anônimo aqui:
 // leitura/escrita em produtivix_v6 usa a conta de administrador,
 // validada pelas rules do Realtime Database.
@@ -3134,6 +3339,19 @@ async function pvxBuildCandidates(){
                  origemKey:'FLOR|TRI|'+d+'|'+p.mat});
     });
   });
+  // BIMBO no RETORNO (automatico): caixa e carro dolly viram triagem do Valmir.
+  // Soma a quantidade fisica do dia, igual ao Flor. Reusa o 'ret' ja lido.
+  const bimboRet={};
+  Object.values(ret).forEach(r=>{
+    if(!ehBimbo(r.material))return;
+    const d=dOf(r.data); if(!d||d<BIMBO_CUTOFF)return;
+    const q=Number(r.qtd_fisica)||0; if(q<=0)return;
+    bimboRet[d]=(bimboRet[d]||0)+q;
+  });
+  Object.entries(bimboRet).forEach(([d,v])=>{
+    cand.push({nomeGod:BIMBO_COLAB.nome,atCod:BIMBO_RET_ATCOD,grupo:'bimbo',
+               volume:v,data:d,origemKey:'BIMBO|TRI|'+d+'|'+BIMBO_COLAB.mat});
+  });
   // SF: movimentação -> OP-MOV-01, conferente -> OP-CONF-01, volume = saida
   const sf=(fbLog('pvx:sf', await DB.ref('retorno_app/saida_fornecedores')
     .orderByChild('data').startAt(cutoff).once('value'))).val()||{};
@@ -3142,8 +3360,28 @@ async function pvxBuildCandidates(){
     const v=Number(r.saida)||0; if(v<=0) return;
     const oe=(r.op_expedicao||'').trim(), om=(r.op_movimentacao||'').trim(), cf=(r.conferente||'').trim();
     if(oe) cand.push({nomeGod:oe,atCod:'OP-EXP-02',grupo:'exp',volume:v,data:d,origemKey:'SF|EXP|'+id});
+    // v40.1: a movimentacao do formulario volta a valer sempre. As vezes
+    // outro colaborador tambem movimenta o Bimbo e ele nao pode perder o
+    // volume. O automatico do Valmir soma so o que NAO foi apontado para
+    // ele no formulario, senao o mesmo volume cairia duas vezes na conta
+    // dele (uma pelo formulario, outra pelo automatico).
     if(om) cand.push({nomeGod:om,atCod:'OP-MOV-01',grupo:'mov',volume:v,data:d,origemKey:'SF|MOV|'+id});
     if(cf) cand.push({nomeGod:cf,atCod:'OP-CONF-01',grupo:'conf',volume:v,data:d,origemKey:'SF|CONF|'+id});
+  });
+  // BIMBO na SAIDA (automatico): movimentacao do Valmir, volume = saida do dia.
+  const bimboSf={};
+  Object.values(sf).forEach(r=>{
+    if(!ehBimbo(r.material))return;
+    const d=dOf(r.data); if(!d||d<BIMBO_CUTOFF)return;
+    const q=Number(r.saida)||0; if(q<=0)return;
+    // ja apontado para o Valmir no formulario: nao repete no automatico
+    if(pvxNormMat(pvxMatDoNome((r.op_movimentacao||'').trim())||'')
+       ===pvxNormMat(BIMBO_COLAB.mat))return;
+    bimboSf[d]=(bimboSf[d]||0)+q;
+  });
+  Object.entries(bimboSf).forEach(([d,v])=>{
+    cand.push({nomeGod:BIMBO_COLAB.nome,atCod:BIMBO_SF_ATCOD,grupo:'bimbo',
+               volume:v,data:d,origemKey:'BIMBO|MOV|'+d+'|'+BIMBO_COLAB.mat});
   });
   return cand;
 }
@@ -3162,7 +3400,7 @@ async function pvxPreview(){
       if(jaMig.has(c.origemKey)) return;
       const norm=pvxMatDoNome(c.nomeGod), pvxMat=norm?pvxByNorm[norm]:null;
       if(!pvxMat){ if(!unmatch[c.nomeGod])unmatch[c.nomeGod]={ap:0,vol:0}; unmatch[c.nomeGod].ap++; unmatch[c.nomeGod].vol+=c.volume; return; }
-      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,rec:0,conf:0,tri:0,mov:0,exp:0,flor:0,ap:0,vol:0};
+      if(!porCol[pvxMat])porCol[pvxMat]={nome:c.nomeGod,mat:pvxMat,rec:0,conf:0,tri:0,mov:0,exp:0,flor:0,bimbo:0,ap:0,vol:0};
       porCol[pvxMat][c.grupo]+=c.volume; porCol[pvxMat].ap++; porCol[pvxMat].vol+=c.volume;
       totNovos++; totVol+=c.volume;
     });
@@ -3178,12 +3416,15 @@ function pvxRenderPreview(){
   const cols=Object.values(porCol).sort((a,b)=>b.vol-a.vol);
   const nUn=Object.values(unmatch).reduce((s,u)=>s+u.ap,0);
   const volFlor=cols.reduce((s,c)=>s+(c.flor||0),0);
+  const volBimbo=cols.reduce((s,c)=>s+(c.bimbo||0),0);
   $('pvxCards').style.display='grid';
+  $('pvxCards').style.gridTemplateColumns='repeat(6,1fr)';
   $('pvxCards').innerHTML=
     `<div class="kcard ok"><div class="klbl">Apontamentos novos</div><div class="kval">${totNovos}</div><div class="ksub">a criar no ProdutiVix</div></div>`
    +`<div class="kcard inf"><div class="klbl">Volume total</div><div class="kval">${totVol}</div><div class="ksub">soma migrada</div></div>`
    +`<div class="kcard inf"><div class="klbl">Colaboradores</div><div class="kval">${cols.length}</div><div class="ksub">recebem volume</div></div>`
    +`<div class="kcard ${volFlor?'wrn':'inf'}"><div class="klbl">Carrinho de Flor</div><div class="kval">${volFlor}</div><div class="ksub">OP-TRI-02 automático</div></div>`
+   +`<div class="kcard ${volBimbo?'wrn':'inf'}"><div class="klbl">Bimbo</div><div class="kval">${volBimbo}</div><div class="ksub">Valmir · automático</div></div>`
    +`<div class="kcard ${nUn?'dng':'ok'}"><div class="klbl">Sem matrícula</div><div class="kval">${nUn}</div><div class="ksub">volume perdido</div></div>`;
   $('pvxPrevBox').style.display='block';
   $('pvxPrevCnt').textContent=cols.length+' colaboradores';
@@ -3191,9 +3432,10 @@ function pvxRenderPreview(){
     `<tr><td title="${c.nome}">${c.nome.length>28?c.nome.substring(0,28)+'…':c.nome}</td><td>${c.mat}</td>`
    +`<td style="text-align:center">${c.rec||'—'}</td><td style="text-align:center">${c.conf||'—'}</td><td style="text-align:center">${c.tri||'—'}</td>`
    +`<td style="text-align:center">${c.flor||'—'}</td>`
+   +`<td style="text-align:center">${c.bimbo||'—'}</td>`
    +`<td style="text-align:center">${c.mov||'—'}</td><td style="text-align:center">${c.exp||'—'}</td>`
    +`<td style="text-align:center"><strong>${c.vol}</strong></td><td style="text-align:center">${c.ap}</td></tr>`
-  ).join(''):'<tr><td colspan="10"><div class="empty">Nada novo a migrar</div></td></tr>';
+  ).join(''):'<tr><td colspan="11"><div class="empty">Nada novo a migrar</div></td></tr>';
   const uns=Object.entries(unmatch).sort((a,b)=>b[1].vol-a[1].vol);
   $('pvxUnmatchBox').style.display=uns.length?'block':'none';
   $('pvxUnmatchCnt').textContent=uns.length+' nomes';
@@ -3393,6 +3635,20 @@ async function savSf(){
   const ent=Number($('sfMEnt').value)||null,sai=Number($('sfMSai').value)||null;
   if(ent && !validarQtdLimite(ent,'Entrada'))return;
   if(sai && !validarQtdLimite(sai,'Saída'))return;
+  // v40: bloqueia repeticao de data + fornecedor + produto + controle.
+  // Varios lancamentos no mesmo dia continuam liberados: o que nao pode e
+  // o mesmo produto sair duas vezes no mesmo controle.
+  const _dupSf=achaDupSf(dt,forn,mat,ctrl,$('sfMdlId').value||null);
+  if(_dupSf){
+    await dupAsk({bloqueio:true,
+      msg:'Este produto já foi lançado em '+dupBr(dt)+' para '+forn
+         +' no controle '+ctrl+'. Para lançar outra quantidade do mesmo '
+         +'produto, use um número de controle diferente ou edite o '
+         +'lançamento que já existe.',
+      detalhe:dupCardSf(_dupSf)});
+    $('sfMCtrl').focus();$('sfMCtrl').select();
+    return;
+  }
   const rec={data:dt,controle:$('sfMCtrl').value.trim()||null,fornecedor:forn,material:mat,
     entrada:ent,saida:sai,saldo:(ent||0)-(sai||0),
     op_expedicao:$('sfMExp').value||null,op_movimentacao:$('sfMMov').value||null,conferente:$('sfMConf').value||null};

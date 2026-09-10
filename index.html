@@ -177,6 +177,7 @@ tr:hover td{background:#F4F2EA}
   <div class="ni" id="nav-sfdash" onclick="go(&#39;sfdash&#39;)">📦 <span>Saldo Fornecedores</span></div>
   <div class="ni" id="nav-pvx" onclick="go(&#39;pvx&#39;)">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
   <div class="nlbl">Sistema 🔒</div>
+  <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
   <div class="ni" id="nav-audit" onclick="go(&#39;audit&#39;)" style="">🔍 <span>Auditoria de Erros 🔒</span></div>
@@ -472,6 +473,27 @@ tr:hover td{background:#F4F2EA}
   <div class="cbox">
     <div class="ctit">🏪 Ranking — divergência acumulada por loja</div>
     <div id="rkBars"><div class="brow"><span class="blbl" title="9 - TATUAPÉ">9 - TATUAPÉ</span><div class="btrk"><div class="bfil" style="width:100%;background:var(--red)"></div></div><span class="bval">1.452</span></div><div class="brow"><span class="blbl" title="57 - JUNDIAI">57 - JUNDIAI</span><div class="btrk"><div class="bfil" style="width:67%;background:var(--red)"></div></div><span class="bval">967</span></div><div class="brow"><span class="blbl" title="100 - CD BRASÍLIA">100 - CD BRASÍLIA</span><div class="btrk"><div class="bfil" style="width:56%;background:var(--red)"></div></div><span class="bval">807</span></div><div class="brow"><span class="blbl" title="38 - RIBEIRÃO PRETO">38 - RIBEIRÃO PRETO</span><div class="btrk"><div class="bfil" style="width:52%;background:var(--red)"></div></div><span class="bval">750</span></div><div class="brow"><span class="blbl" title="35 - SÃO JOSÉ DOS CAMPOS">35 - SÃO JOSÉ DOS CAMPOS</span><div class="btrk"><div class="bfil" style="width:47%;background:var(--red)"></div></div><span class="bval">681</span></div><div class="brow"><span class="blbl" title="86 - SÃO JOSÉ DO RIO PRETO">86 - SÃO JOSÉ DO RIO PRETO</span><div class="btrk"><div class="bfil" style="width:46%;background:var(--red)"></div></div><span class="bval">663</span></div><div class="brow"><span class="blbl" title="23 - CAMBUÍ">23 - CAMBUÍ</span><div class="btrk"><div class="bfil" style="width:45%;background:var(--red)"></div></div><span class="bval">655</span></div><div class="brow"><span class="blbl" title="127 - FRANCA">127 - FRANCA</span><div class="btrk"><div class="bfil" style="width:45%;background:var(--red)"></div></div><span class="bval">648</span></div><div class="brow"><span class="blbl" title="76 - SANTOS">76 - SANTOS</span><div class="btrk"><div class="bfil" style="width:41%;background:var(--red)"></div></div><span class="bval">596</span></div><div class="brow"><span class="blbl" title="19 - MORUMBI">19 - MORUMBI</span><div class="btrk"><div class="bfil" style="width:40%;background:var(--red)"></div></div><span class="bval">588</span></div><div class="brow"><span class="blbl" title="1 - CAROLINA">1 - CAROLINA</span><div class="btrk"><div class="bfil" style="width:40%;background:var(--red)"></div></div><span class="bval">583</span></div><div class="brow"><span class="blbl" title="71 - APUCARANA">71 - APUCARANA</span><div class="btrk"><div class="bfil" style="width:37%;background:var(--red)"></div></div><span class="bval">544</span></div><div class="brow"><span class="blbl" title="32 - VILA MARIANA">32 - VILA MARIANA</span><div class="btrk"><div class="bfil" style="width:37%;background:var(--red)"></div></div><span class="bval">535</span></div><div class="brow"><span class="blbl" title="55 - CAMPO BELO">55 - CAMPO BELO</span><div class="btrk"><div class="bfil" style="width:36%;background:var(--red)"></div></div><span class="bval">526</span></div><div class="brow"><span class="blbl" title="104 - INDAIATUBA">104 - INDAIATUBA</span><div class="btrk"><div class="bfil" style="width:36%;background:var(--red)"></div></div><span class="bval">521</span></div></div>
+  </div>
+</div>
+
+<!-- EXPORTAR -->
+<!-- LOJAS -->
+<div class="pg" id="pg-lojas">
+  <div class="scard">
+    <h2>🏬 Cadastrar Lojas</h2>
+    <p>Lojas cadastradas aqui entram automaticamente na busca de "Novo Retorno", nos filtros e na Triagem — e sincronizam com o PaletCD.</p>
+    <div class="fg" style="margin-bottom:14px">
+      <div class="fld"><label>Código *</label><input type="number" min="1" id="ljCod" placeholder="Ex: 152"></div>
+      <div class="fld s2"><label>Nome da Loja *</label><input type="text" id="ljNome" placeholder="Ex: Vila Prudente"></div>
+    </div>
+    <button class="btn pri" onclick="addLojaGodmode()">✓ Cadastrar Loja</button>
+  </div>
+  <div class="tbox">
+    <div class="thead2"><span class="ttit">Lojas Cadastradas</span><span class="tcnt" id="ljCnt">0 lojas</span></div>
+    <div class="tscroll"><table>
+      <thead><tr><th>Código</th><th>Nome</th><th>Origem</th><th>Ações</th></tr></thead>
+      <tbody id="ljBody"></tbody>
+    </table></div>
   </div>
 </div>
 
@@ -971,6 +993,16 @@ const LOJAS_DATA=[
 ];
 const LOJAS=LOJAS_DATA.map(l=>`${l.num} - ${l.nome}`).sort((a,b)=>Number(a.split(' - ')[0])-Number(b.split(' - ')[0]));
 
+// LOJAS CADASTRADAS MANUALMENTE (aba "Cadastrar Lojas")
+// Somadas ao LOJAS_DATA em tempo real via listener no Firebase — refletem
+// direto na busca do Novo Retorno, nos filtros e na fila de Triagem.
+let LOJAS_EXTRA=[];
+function getLojasData(){return [...LOJAS_DATA,...LOJAS_EXTRA];}
+function getLojasFmt(){
+  return getLojasData().map(l=>`${l.num} - ${l.nome}`)
+    .sort((a,b)=>Number(a.split(' - ')[0])-Number(b.split(' - ')[0]));
+}
+
 // BASE COLABORADORES — Quadro_Equipe_Logistica_Reversa.xlsx
 const COLABORADORES=[
   {mat:'00000000',nome:'Colaborador TSI',cargo:'Auxiliar de Logística',turno:'Sem Turno'},
@@ -1090,6 +1122,7 @@ async function initFirebase() {
     DB = firebase.database();
     fbReady = true;
     sts('Conectando...', 'a');
+    lojasExtraListen();
     await cacheBootstrap();   // carrega o cache do IndexedDB
     await loadData();
   } catch(e) {
@@ -1441,6 +1474,7 @@ function go(p){
   if(p==='sf'){ ensureSf().then(()=>{SF_FILT=[...SF_ALL];renderSfTbl();}); }
   if(p==='sfdash'){ ensureSf().then(renderSfDash); }
   if(p==='pvx'){pvxReset()}
+  if(p==='lojas'){renderLojas()}
   $('nav-admout').style.display=isAdmin()?'':'none';
 }
 
@@ -1666,7 +1700,7 @@ function buscarLoja(){
   const drop=$('nLjDrop');
   ljIdx=-1;
   if(q.length<2){drop.style.display='none';return}
-  const res=LOJAS.filter(l=>l.toLowerCase().includes(q)).slice(0,12);
+  const res=getLojasFmt().filter(l=>l.toLowerCase().includes(q)).slice(0,12);
   if(!res.length){drop.style.display='none';return}
   drop.innerHTML=res.map((l,i)=>`<div class="lj-item" data-i="${i}" onclick="selLoja('${l.replace(/'/g,"\\'")}')" onmouseover="setLjIdx(${i})" style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--bdr);color:var(--txt)">${l}</div>`).join('');
   drop.style.display='block';
@@ -2117,9 +2151,72 @@ function expCSV(){
 }
 
 function populateExpLoja(){
-  // Usa LOJAS (lista canônica do LOJAS_DATA, ordem numérica) para que
+  // Usa getLojasFmt() (LOJAS_DATA + LOJAS_EXTRA) para que
   // lojas recém-cadastradas apareçam mesmo sem registros no Firebase.
-  $('eLj').innerHTML='<option value="">Todas</option>'+LOJAS.map(l=>`<option>${l}</option>`).join('');
+  $('eLj').innerHTML='<option value="">Todas</option>'+getLojasFmt().map(l=>`<option>${l}</option>`).join('');
+}
+
+// ===================== CADASTRO DE LOJAS =====================
+// Node dedicado e leve — escuta em tempo real (.on) porque é pequeno,
+// diferente das coleções grandes que usam janela/cache.
+function lojasExtraListen(){
+  if(!DB)return;
+  DB.ref('retorno_app/lojas_extra').on('value',snap=>{
+    const v=snap.val()||{};
+    LOJAS_EXTRA=Object.keys(v).map(k=>v[k]);
+    renderLojas();
+    populateExpLoja();
+    popSel();
+  });
+}
+function renderLojas(){
+  const body=$('ljBody');
+  if(!body)return; // tela ainda não aberta
+  const lojas=getLojasData().slice().sort((a,b)=>a.num-b.num);
+  $('ljCnt').textContent=lojas.length+' loja(s)';
+  body.innerHTML=lojas.length?lojas.map(l=>{
+    const extra=LOJAS_EXTRA.some(x=>x.num===l.num);
+    return `<tr>
+      <td>${String(l.num).padStart(3,'0')}</td>
+      <td><strong>${l.nome}</strong></td>
+      <td>${extra?'Cadastrada':'Padrão'}</td>
+      <td>${extra?`<button class="btn dng" style="padding:4px 12px;font-size:12px" onclick="delLojaGodmode(${l.num})">🗑 Excluir</button>`:'—'}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--mut);padding:20px">Nenhuma loja cadastrada</td></tr>';
+}
+async function addLojaGodmode(){
+  if(!exigirAdmin('cadastrar loja'))return;
+  const cod=parseInt($('ljCod').value);
+  const nome=($('ljNome').value||'').trim().toUpperCase();
+  if(!cod||cod<1){ntfy('Informe um código de loja válido','er');return}
+  if(!nome){ntfy('Informe o nome da loja','er');return}
+  if(getLojasData().some(l=>l.num===cod)){
+    ntfy(`Já existe uma loja cadastrada com o código ${String(cod).padStart(3,'0')}`,'er');
+    return;
+  }
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase — a loja NÃO foi salva.','er');return}
+  try{
+    await DB.ref('retorno_app/lojas_extra/'+cod).set({num:cod,nome});
+    ntfy(`Loja "${nome}" (${String(cod).padStart(3,'0')}) cadastrada!`,'ok');
+    $('ljCod').value='';$('ljNome').value='';
+  }catch(e){
+    console.error('addLojaGodmode:',e);
+    ntfy('Falha ao cadastrar: '+(e&&e.message?e.message:'erro'),'er');
+  }
+}
+async function delLojaGodmode(num){
+  if(!exigirAdmin('excluir loja'))return;
+  const l=LOJAS_EXTRA.find(x=>x.num===Number(num));
+  if(!l)return;
+  if(!confirm(`Excluir a loja "${l.nome}" (${String(l.num).padStart(3,'0')})? Esta ação não pode ser desfeita.`))return;
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase — nada foi excluído.','er');return}
+  try{
+    await DB.ref('retorno_app/lojas_extra/'+num).remove();
+    ntfy('Loja excluída','ok');
+  }catch(e){
+    console.error('delLojaGodmode:',e);
+    ntfy('Falha ao excluir: '+(e&&e.message?e.message:'erro'),'er');
+  }
 }
 
 // NOTIF
@@ -2362,21 +2459,9 @@ const MAP_PALET = {
   'GAIOLA MADEIRA':      'GAIOLA'
 };
 
-// Mapeamento: número da loja → dígito (d) usado pelo PaletCD
-// Extraído de LOJAS_BASE do PaletCD
-const MAP_LOJA_DIGIT = {
-  1:'1',2:'2',3:'3',5:'5',6:'6',9:'9',10:'10',11:'11',12:'12',13:'13',
-  14:'14',15:'15',16:'16',17:'17',19:'19',21:'21',23:'23',24:'24',25:'25',26:'26',
-  29:'29',30:'30',31:'31',32:'32',33:'33',34:'34',35:'35',36:'36',37:'37',38:'38',
-  39:'39',40:'40',41:'41',42:'42',43:'43',44:'44',45:'45',46:'46',47:'47',48:'48',
-  49:'49',50:'50',51:'51',52:'52',53:'53',54:'54',55:'55',56:'56',57:'57',58:'58',
-  59:'59',61:'61',62:'62',63:'63',64:'64',65:'65',67:'67',69:'69',70:'70',71:'71',
-  72:'72',73:'73',74:'74',75:'75',76:'76',79:'79',80:'80',81:'81',84:'84',86:'86',
-  87:'87',88:'88',92:'92',94:'94',97:'97',99:'99',100:'100',104:'104',107:'107',108:'108',
-  120:'120',121:'121',122:'122',123:'123',124:'124',125:'125',127:'127',128:'128',130:'130',131:'131',
-  132:'132',133:'133',134:'134',135:'135',136:'136',139:'139',140:'140',141:'141',142:'142',143:'143',
-  144:'144',145:'145',146:'146',147:'147',148:'148',149:'149',150:'150',151:'151'
-};
+// v.next: MAP_LOJA_DIGIT removido — o dígito do PaletCD agora é derivado
+// direto de getLojasData() em enviarParaPaletCD(), já cobrindo lojas novas
+// cadastradas na aba "Cadastrar Lojas" sem precisar manter tabela separada.
 
 const PALETCD_CONFIG = {
   apiKey: 'AIzaSyD_BE2ocd4_yfAO70SoVrdxEMs-PaPtLRQ',
@@ -2410,43 +2495,22 @@ async function enviarParaPaletCD(base, linhas) {
   if (total === 0) return; // nenhum palete/gaiola — nada a enviar
 
   // 2. Extrai número da loja do formato "64 - ALPHAVILLE BARUERI"
+  // O dígito usado no PaletCD é sempre o próprio número da loja — inclui
+  // automaticamente as lojas cadastradas na aba "Cadastrar Lojas".
   const numLoja = parseInt((base.loja || '').split(' - ')[0]);
-  const lojaDigito = MAP_LOJA_DIGIT[numLoja];
-  if (!lojaDigito) {
+  const lojaCad = getLojasData().find(l => l.num === numLoja);
+  if (!lojaCad) {
     console.warn('PaletCD: loja não mapeada:', base.loja);
     return;
   }
+  const lojaDigito = String(numLoja);
 
   // 3. Grava no PaletCD v2 com escrita granular (sem ler/reescrever a árvore toda)
   try {
     await paletcdInit();
     const root = PALETCD_DB.ref('palet_app/v2');
 
-    const NOMES_LOJA = {
-      1:'Carolina',2:'Ponte Preta',3:'Bonfim',5:'Amoreiras',6:'Americana',
-      9:'Tatuapé',10:'Sorocaba 1',11:'Butanta',12:'Ibitirama',13:'Moema',
-      14:'Penha',15:'Santana Pujol',16:'Taquaral',17:'The Mall',19:'Morumbi',
-      21:'Centro',23:'Cambuí',24:'Santana Ataliba',25:'Santana Tolle',26:'Sorocaba 2',
-      29:'Mooca',30:'Piracicaba',31:'Sousas',32:'Vila Mariana',33:'Galleria',
-      34:'Anália Franco',35:'São José Dos Campos',36:'Angelica',37:'Teodoro Sampaio',38:'Ribeirão Preto',
-      39:'Interlagos',40:'Market Place',41:'Leopoldina',42:'Santo André',43:'Perdizes',
-      44:'306 Nort',45:'Colorado',46:'302 Sul',47:'Qi09 La',48:'212 Sul',
-      49:'Castanheira',50:'D Bosco',51:'Araucárias',52:'209 Nor',53:'Flamboyant',
-      54:'T63',55:'Campo Belo',56:'Vila Mascote',57:'Jundiai',58:'Vict Pires',
-      59:'Asa Sul',61:'ShpIgutDF',62:'Pira Way',63:'Shop Jundiai',64:'Alphaville Barueri',
-      65:'Ribeirão Preto 2',67:'São Bernardo',69:'Alphaville',70:'Frigorifico',71:'Apucarana',
-      72:'Shopping Tatuapé',73:'Cambui 2',74:'Itaim Bibi',75:'Nova Campinas',76:'Santos',
-      79:'Sorocaba 3',80:'Itu',81:'Pamplona',84:'Tatuapé 3',86:'São José Do Rio Preto',
-      87:'Itatiba',88:'Granja Viana',92:'Restaurante',94:'Caixaria',97:'Cd Sumaré',
-      99:'Produção',100:'Cd Brasília',104:'Indaiatuba',107:'Americana 2',108:'Limeira',
-      120:'Ouro Verde',121:'Arborais',122:'Bauru',123:'Nova Cantareira',124:'Cd Bahia',
-      125:'Cd São Miguel',127:'Franca',128:'Urbanova',130:'São Mateus',131:'203 Asa Sul',
-      132:'Produção',133:'Holambra',134:'Damha',135:'Vila Mariana 2',136:'São Carlos',
-      139:'Itaim Bibi 2',140:'Swiss Park',141:'Rio Claro',142:'Mascote 2',143:'Rio Grande',
-      144:'São Bernardo 2',145:'Embare',146:'Arapanes',147:'Olimpia',148:'Paraiso',
-      149:'Interlagos',150:'Corujas',151:'J Cachoeiras'
-    };
-    const lojaNome = NOMES_LOJA[numLoja] || String(numLoja);
+    const lojaNome = lojaCad.nome;
 
     // 3a. Delta-direct por modelo, espelhando o doRetornoLoja do PaletCD:
     //     est.Lojas  -= q   (o palete deixa a posse da loja)
@@ -2861,7 +2925,7 @@ const PVX_CONFIG={
 // A conta de administrador é criada no Firebase Console do projeto
 // produtividade-6d86f (Authentication > Users). A autorização real
 // é feita pelas RULES do Realtime Database (nó /admins/{uid} = true).
-const ADMIN_PAGES=['pvx','exp','cfg','audit'];
+const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas'];
 
 // ===================== AUDITORIA DE ERROS =====================
 async function runAudit(){
@@ -3730,7 +3794,7 @@ async function delSfSel(){
 function popSel(){
   ['eLja'].forEach(id=>{
     const el=$(id);if(!el)return;
-    el.innerHTML='<option value="">Selecione...</option>'+LOJAS.map(l=>`<option>${l}</option>`).join('');
+    el.innerHTML='<option value="">Selecione...</option>'+getLojasFmt().map(l=>`<option>${l}</option>`).join('');
   });
   ['nOp','eOp','nCf','eCf','trMdlOp','trMdlMov','sfMExp','sfMMov','sfMConf'].forEach(id=>{
     const el=$(id);if(!el)return;

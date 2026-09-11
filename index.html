@@ -179,6 +179,7 @@ tr:hover td{background:#F4F2EA}
   <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
+  <div class="ni" id="nav-paletcd-rec" onclick="reconciliarPaletCD()" title="Reenvia lançamentos que não chegaram no PaletCD por falha de sincronização">🔄 <span>Reconciliar PaletCD</span><span class="nc" id="navPaletcdCnt" style="display:none">0</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
   <div class="ni" id="nav-audit" onclick="go(&#39;audit&#39;)" style="">🔍 <span>Auditoria de Erros 🔒</span></div>
   <div class="ni" id="nav-admout" style="" onclick="admLogout()">🔓 <span>Sair do modo admin</span></div>
@@ -1125,6 +1126,7 @@ async function initFirebase() {
     lojasExtraListen();
     await cacheBootstrap();   // carrega o cache do IndexedDB
     await loadData();
+    atualizarBadgePaletCD();  // mostra se há lançamentos presos por falha do PaletCD
   } catch(e) {
     console.error('Firebase erro:', e);
     sts('Erro Firebase', 'r');
@@ -2552,6 +2554,7 @@ async function enviarParaPaletCD(base, linhas) {
   } catch(e) {
     console.warn('PaletCD integração falhou:', e.message);
     ntfy('⚠️ PaletCD não sincronizado: ' + e.message, 'er');
+    await paletcdEnfileirar('retorno', { base, linhas });
   }
 }
 
@@ -2689,6 +2692,7 @@ async function sfSyncPaletCD(rec, prev){
   }catch(e){
     console.warn('PaletCD SF falhou:', e.message);
     ntfy('⚠️ PaletCD não sincronizado: '+e.message,'er');
+    await paletcdEnfileirar('sf', { rec, prevSync: ant });
     // Delta já gravado: registra o novo estado para não duplicar na próxima edição
     return deltaOk && novo
       ? { modelo:novo.modelo, entrada:novo.entrada, saida:novo.saida,
@@ -2713,6 +2717,75 @@ async function sfRevertPaletCD(prev){
     console.warn('PaletCD SF estorno falhou:', e.message);
     ntfy('⚠️ Estorno PaletCD falhou: '+e.message,'er');
   }
+}
+
+// ============ FILA DE PENDÊNCIAS PALETCD ============
+// Enquanto a chave/conta do PaletCD estiver fora do ar, os lançamentos
+// continuam salvos normalmente aqui no Retorno de Materiais — só a baixa
+// espelhada no PaletCD falha. Esta fila guarda o que falhou (em
+// retorno_app/paletcd_pendentes, no MESMO Firebase do GODMODE, que não
+// depende da chave do PaletCD) pra reenviar depois sem precisar auditar
+// registro por registro.
+
+async function paletcdEnfileirar(tipo, payload) {
+  if (!fbReady || !DB) return; // sem Firebase nem fila dá pra guardar
+  try {
+    const ref = DB.ref('retorno_app/paletcd_pendentes').push();
+    await ref.set({ tipo, payload, ts: new Date().toISOString() });
+    atualizarBadgePaletCD();
+  } catch (e) {
+    console.warn('Não foi possível enfileirar pendência PaletCD:', e.message);
+  }
+}
+
+async function paletcdRemoverPendencia(key) {
+  if (!fbReady || !DB) return;
+  try { await DB.ref('retorno_app/paletcd_pendentes/' + key).remove(); }
+  catch (e) { console.warn('Falha ao limpar pendência PaletCD:', e.message); }
+}
+
+// Mostra no menu quantos lançamentos ainda estão presos, sem precisar abrir nada.
+async function atualizarBadgePaletCD() {
+  const el = $('navPaletcdCnt');
+  if (!el || !fbReady || !DB) return;
+  try {
+    const snap = await DB.ref('retorno_app/paletcd_pendentes').get();
+    const n = snap.exists() ? Object.keys(snap.val()).length : 0;
+    el.textContent = n;
+    el.style.display = n ? '' : 'none';
+  } catch (e) { /* badge é só indicativo, falha aqui não trava nada */ }
+}
+
+// Reenvia tudo que ficou pendente. Chame pelo menu (Sistema → Reconciliar
+// PaletCD) depois que a chave/conta do PaletCD voltar ao ar.
+async function reconciliarPaletCD() {
+  if (!fbReady || !DB) { ntfy('Sem conexão — não dá pra reconciliar agora', 'er'); return; }
+  let snap;
+  try { snap = await DB.ref('retorno_app/paletcd_pendentes').get(); }
+  catch (e) { ntfy('Falha ao ler pendências: ' + e.message, 'er'); return; }
+  const pendentes = snap.val() || {};
+  const chaves = Object.keys(pendentes);
+  if (!chaves.length) { ntfy('Nenhuma pendência PaletCD 👍', 'ok'); await atualizarBadgePaletCD(); return; }
+
+  ntfy(`Reenviando ${chaves.length} pendência(s) PaletCD...`, 'ok');
+  for (const key of chaves) {
+    const item = pendentes[key];
+    // Remove antes de tentar: se falhar de novo, a própria função de sync
+    // reenfileira um registro novo — evita duplicar a pendência antiga.
+    await paletcdRemoverPendencia(key);
+    if (item.tipo === 'retorno') {
+      await enviarParaPaletCD(item.payload.base, item.payload.linhas);
+    } else if (item.tipo === 'sf') {
+      const novoSync = await sfSyncPaletCD(item.payload.rec, item.payload.prevSync);
+      if (fbReady && DB) {
+        await DB.ref('retorno_app/saida_fornecedores/' + item.payload.rec.id + '/palet_sync').set(novoSync || null);
+        const i = SF_ALL.findIndex(x => x.id === item.payload.rec.id);
+        if (i >= 0) SF_ALL[i].palet_sync = novoSync || null;
+      }
+    }
+  }
+  ntfy('Reconciliação concluída — confira os avisos acima', 'ok');
+  await atualizarBadgePaletCD();
 }
 
 // ===================== FIM INTEGRAÇÃO PALETCD =====================

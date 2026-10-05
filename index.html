@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v40
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v41
+     v41: tela "Colaboradores" (Sistema, so admin). Cadastro, edicao de cargo/turno,
+          inativar/reativar e excluir, gravando em retorno_app/colaboradores_extra/{chapa}.
+          A lista fixa COLABORADORES continua como base; o que esta no Firebase soma
+          ou sobrepoe pela chapa. Inativo some dos selects de lancamento e da
+          identificacao por chapa, mas continua na edicao e no ProdutiVix (historico).
+          Nome e chapa ficam travados na edicao para nao quebrar o historico.
      v40: (a) trava de duplicidade no lancamento.
               Retorno: mesma LOJA + mesmo n. de NF = BLOQUEIA, em qualquer data
               (a loja nao emite a mesma NF duas vezes). Lojas diferentes com o
@@ -178,6 +184,7 @@ tr:hover td{background:#F4F2EA}
   <div class="ni" id="nav-pvx" onclick="go(&#39;pvx&#39;)">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
   <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
+  <div class="ni" id="nav-colab" onclick="go(&#39;colab&#39;)">👷 <span>Colaboradores</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-paletcd-rec" onclick="reconciliarPaletCD()" title="Reenvia lançamentos que não chegaram no PaletCD por falha de sincronização">🔄 <span>Reconciliar PaletCD</span><span class="nc" id="navPaletcdCnt" style="display:none">0</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
@@ -494,6 +501,30 @@ tr:hover td{background:#F4F2EA}
     <div class="tscroll"><table>
       <thead><tr><th>Código</th><th>Nome</th><th>Origem</th><th>Ações</th></tr></thead>
       <tbody id="ljBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- COLABORADORES -->
+<div class="pg" id="pg-colab">
+  <div class="scard">
+    <h2 id="cbTit">👷 Cadastrar Colaborador</h2>
+    <p>Quem for cadastrado aqui aparece na hora em todos os campos de Operador e Conferente, na identificação por chapa e no envio ao ProdutiVix. A chapa precisa ser a mesma do ProdutiVix.</p>
+    <div class="fg" style="margin-bottom:14px">
+      <div class="fld"><label>Chapa (matrícula) *</label><input type="text" inputmode="numeric" id="cbMat" placeholder="Ex: 20001498" autocomplete="off"></div>
+      <div class="fld s2"><label>Nome completo *</label><input type="text" id="cbNome" placeholder="Ex: ISAAC FERNANDES HENRIQUE DE MELO" autocomplete="off"></div>
+      <div class="fld"><label>Cargo *</label><input type="text" id="cbCargo" list="cbCargoList" placeholder="Ex: AUXILIAR DE HIGIENIZAÇÃO" autocomplete="off"><datalist id="cbCargoList"></datalist></div>
+      <div class="fld"><label>Turno *</label><input type="text" id="cbTurno" list="cbTurnoList" placeholder="Ex: LOG Reversa Superv T3" autocomplete="off"><datalist id="cbTurnoList"></datalist></div>
+    </div>
+    <button class="btn pri" id="cbBtn" onclick="salvarColab()">✓ Cadastrar Colaborador</button>
+    <button class="btn" id="cbCancel" style="display:none;margin-left:8px" onclick="limparColabForm()">Cancelar edição</button>
+  </div>
+  <div class="tbox">
+    <div class="thead2"><span class="ttit">Quadro de Colaboradores</span><span class="tcnt" id="cbCnt">0</span></div>
+    <div style="padding:8px 12px"><input type="text" id="cbBusca" placeholder="🔍 Buscar por nome, chapa, cargo ou turno" oninput="renderColabs()" style="width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r);color:var(--txt);padding:8px 11px;font-size:14px;outline:none"></div>
+    <div class="tscroll"><table>
+      <thead><tr><th>Chapa</th><th>Nome</th><th>Cargo</th><th>Turno</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody id="cbBody"></tbody>
     </table></div>
   </div>
 </div>
@@ -1056,12 +1087,29 @@ const COLABORADORES=[
 ];
 const OPS=COLABORADORES.map(c=>c.nome).sort();
 
+// ===== COLABORADORES DO FIREBASE (v41) =====
+// retorno_app/colaboradores_extra/{chapa} = {mat,nome,cargo,turno,ativo,atualizado_em,atualizado_por}
+// Soma ou sobrepõe a lista fixa pela chapa.
+let COLAB_EXTRA={};
+function getColabsTodos(){
+  const m=new Map();
+  COLABORADORES.forEach(c=>m.set(c.mat,{...c,ativo:true,origem:'Padrão'}));
+  Object.values(COLAB_EXTRA).forEach(x=>{
+    if(!x||!x.mat)return;
+    const base=m.get(x.mat);
+    m.set(x.mat,{mat:x.mat,nome:x.nome||(base&&base.nome)||'',cargo:x.cargo||(base&&base.cargo)||'',
+      turno:x.turno||(base&&base.turno)||'',ativo:x.ativo!==false,origem:base?'Alterado':'Cadastrado'});
+  });
+  return [...m.values()].sort((a,b)=>a.nome.localeCompare(b.nome));
+}
+function getColabsAtivos(){return getColabsTodos().filter(c=>c.ativo);}
+
 // ===== IDENTIFICAÇÃO POR CHAPA =====
 // Chapas fora do quadro operacional autorizadas a lançar:
 const CHAPAS_EXTRA=[{mat:'02201539',nome:'MARCELO (ADMINISTRADOR)',cargo:'ADMINISTRADOR',turno:'ADM'}];
 function chapaLookup(m){
   m=String(m||'').trim();
-  return COLABORADORES.find(c=>c.mat===m)||CHAPAS_EXTRA.find(c=>c.mat===m)||null;
+  return getColabsAtivos().find(c=>c.mat===m)||CHAPAS_EXTRA.find(c=>c.mat===m)||null;
 }
 function chapaAtual(){try{return JSON.parse(localStorage.getItem('gm_chapa'))||null}catch(e){return null}}
 function chapaBadge(){
@@ -1124,6 +1172,7 @@ async function initFirebase() {
     fbReady = true;
     sts('Conectando...', 'a');
     lojasExtraListen();
+    colabExtraListen();
     await cacheBootstrap();   // carrega o cache do IndexedDB
     await loadData();
     atualizarBadgePaletCD();  // mostra se há lançamentos presos por falha do PaletCD
@@ -1477,6 +1526,7 @@ function go(p){
   if(p==='sfdash'){ ensureSf().then(renderSfDash); }
   if(p==='pvx'){pvxReset()}
   if(p==='lojas'){renderLojas()}
+  if(p==='colab'){renderColabs()}
   $('nav-admout').style.display=isAdmin()?'':'none';
 }
 
@@ -2221,6 +2271,119 @@ async function delLojaGodmode(num){
   }
 }
 
+// ===================== CADASTRO DE COLABORADORES (v41) =====================
+function escH(t){return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+let _cbEditMat=null;
+function colabExtraListen(){
+  if(!DB)return;
+  DB.ref('retorno_app/colaboradores_extra').on('value',snap=>{
+    COLAB_EXTRA=snap.val()||{};
+    rebuildNomeMat();
+    popSel();
+    renderColabs();
+    chapaBadge();
+  },err=>console.error('colabExtraListen:',err));
+}
+function renderColabs(){
+  const body=$('cbBody');if(!body)return;
+  const todos=getColabsTodos();
+  // sugestões de cargo e turno a partir do quadro atual
+  const uniq=a=>[...new Set(a.filter(Boolean))].sort();
+  $('cbCargoList').innerHTML=uniq(todos.map(c=>c.cargo)).map(v=>`<option value="${escH(v)}"></option>`).join('');
+  $('cbTurnoList').innerHTML=uniq(todos.map(c=>c.turno)).map(v=>`<option value="${escH(v)}"></option>`).join('');
+  const q=($('cbBusca').value||'').trim().toUpperCase();
+  const lista=q?todos.filter(c=>(c.mat+' '+c.nome+' '+c.cargo+' '+c.turno).toUpperCase().includes(q)):todos;
+  const nAt=todos.filter(c=>c.ativo).length;
+  $('cbCnt').textContent=nAt.toLocaleString('pt-BR')+' ativo(s) · '+(todos.length-nAt).toLocaleString('pt-BR')+' inativo(s)';
+  body.innerHTML=lista.length?lista.map(c=>{
+    const fixo=c.mat==='00000000';
+    const acoes=fixo?'—':`<button class="btn" style="padding:4px 10px;font-size:12px" onclick="editarColab('${c.mat}')">✏️ Editar</button>
+      <button class="btn${c.ativo?' dng':''}" style="padding:4px 10px;font-size:12px;margin-left:4px" onclick="toggleColab('${c.mat}')">${c.ativo?'⛔ Inativar':'✅ Reativar'}</button>
+      ${c.origem==='Cadastrado'?`<button class="btn dng" style="padding:4px 10px;font-size:12px;margin-left:4px" title="Só use se foi cadastro errado" onclick="delColab('${c.mat}')">🗑</button>`:''}`;
+    return `<tr${c.ativo?'':' style="opacity:.55"'}>
+      <td>${escH(c.mat)}</td><td><strong>${escH(c.nome)}</strong></td><td>${escH(c.cargo)}</td><td>${escH(c.turno)}</td>
+      <td>${c.origem}</td><td>${c.ativo?'🟢 Ativo':'⚪ Inativo'}</td><td style="white-space:nowrap">${acoes}</td></tr>`;
+  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--mut);padding:20px">Nenhum colaborador encontrado</td></tr>';
+}
+function limparColabForm(){
+  _cbEditMat=null;
+  ['cbMat','cbNome','cbCargo','cbTurno'].forEach(id=>$(id).value='');
+  $('cbMat').disabled=false;$('cbNome').disabled=false;
+  $('cbTit').textContent='👷 Cadastrar Colaborador';
+  $('cbBtn').textContent='✓ Cadastrar Colaborador';
+  $('cbCancel').style.display='none';
+}
+function editarColab(mat){
+  const c=getColabsTodos().find(x=>x.mat===mat);if(!c)return;
+  _cbEditMat=mat;
+  $('cbMat').value=c.mat;$('cbNome').value=c.nome;$('cbCargo').value=c.cargo;$('cbTurno').value=c.turno;
+  $('cbMat').disabled=true;$('cbNome').disabled=true; // nome e chapa travados: são a chave do histórico
+  $('cbTit').textContent='✏️ Editar '+c.nome.split(' ')[0];
+  $('cbBtn').textContent='✓ Salvar alterações';
+  $('cbCancel').style.display='';
+  $('pg-colab').scrollIntoView({behavior:'smooth'});
+}
+async function salvarColab(){
+  if(!exigirAdmin('cadastrar colaborador'))return;
+  const mat=($('cbMat').value||'').replace(/\D/g,'');
+  const nome=($('cbNome').value||'').trim().replace(/\s+/g,' ').toUpperCase();
+  const cargo=($('cbCargo').value||'').trim().replace(/\s+/g,' ').toUpperCase();
+  const turno=($('cbTurno').value||'').trim().replace(/\s+/g,' ');
+  if(!mat){ntfy('Informe a chapa (só números)','er');return}
+  if(!nome||nome.split(' ').length<2){ntfy('Informe o nome completo','er');return}
+  if(!cargo){ntfy('Informe o cargo','er');return}
+  if(!turno){ntfy('Informe o turno','er');return}
+  const todos=getColabsTodos();
+  if(!_cbEditMat){
+    const porMat=todos.find(c=>c.mat===mat);
+    if(porMat){ntfy(`A chapa ${mat} já é de ${porMat.nome}${porMat.ativo?'':' (inativo, use Reativar)'}`,'er');return}
+    const porNome=todos.find(c=>c.nome===nome);
+    if(porNome){ntfy(`Já existe ${nome} com a chapa ${porNome.mat}`,'er');return}
+  }
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase. O colaborador NÃO foi salvo.','er');return}
+  const base=todos.find(c=>c.mat===(_cbEditMat||mat));
+  const ch=chapaAtual();
+  const rec={mat:_cbEditMat||mat,nome:_cbEditMat?base.nome:nome,cargo,turno,ativo:_cbEditMat?base.ativo:true,
+    atualizado_em:new Date().toISOString(),atualizado_por:ch?ch.mat:'admin'};
+  try{
+    await DB.ref('retorno_app/colaboradores_extra/'+rec.mat).set(rec);
+    ntfy(_cbEditMat?`${rec.nome} atualizado`:`${rec.nome} cadastrado!`,'ok');
+    limparColabForm();
+  }catch(e){
+    console.error('salvarColab:',e);
+    ntfy('Falha ao salvar: '+(e&&e.message?e.message:'erro'),'er');
+  }
+}
+async function toggleColab(mat){
+  if(!exigirAdmin('inativar colaborador'))return;
+  const c=getColabsTodos().find(x=>x.mat===mat);if(!c)return;
+  const novo=!c.ativo;
+  if(!novo&&!confirm(`Inativar ${c.nome}? Ele some dos lançamentos novos, mas o histórico continua.`))return;
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase. Nada foi alterado.','er');return}
+  const ch=chapaAtual();
+  try{
+    await DB.ref('retorno_app/colaboradores_extra/'+mat).set({mat:c.mat,nome:c.nome,cargo:c.cargo,turno:c.turno,ativo:novo,
+      atualizado_em:new Date().toISOString(),atualizado_por:ch?ch.mat:'admin'});
+    ntfy(`${c.nome} ${novo?'reativado':'inativado'}`,'ok');
+  }catch(e){
+    console.error('toggleColab:',e);
+    ntfy('Falha ao alterar: '+(e&&e.message?e.message:'erro'),'er');
+  }
+}
+async function delColab(mat){
+  if(!exigirAdmin('excluir colaborador'))return;
+  const c=getColabsTodos().find(x=>x.mat===mat);if(!c||c.origem!=='Cadastrado')return;
+  if(!confirm(`Excluir o cadastro de ${c.nome}? Use só se foi cadastro errado. Se ele saiu da empresa, use Inativar.`))return;
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase. Nada foi excluído.','er');return}
+  try{
+    await DB.ref('retorno_app/colaboradores_extra/'+mat).remove();
+    ntfy('Cadastro excluído','ok');
+  }catch(e){
+    console.error('delColab:',e);
+    ntfy('Falha ao excluir: '+(e&&e.message?e.message:'erro'),'er');
+  }
+}
+
 // NOTIF
 function ntfy(msg,type){
   const c=$('ntf'),el=document.createElement('div');
@@ -2596,20 +2759,9 @@ function sfTs(data){
   return `${d}/${mo}/${y}, ${new Date().toLocaleTimeString('pt-BR')}`;
 }
 
-// Vales VP2027 nascem no app Recebimento de Paletes e são pagos no PaletCD
-// pela tela "Vales VP2027". Aqui continuam lançados só para a produtividade:
-// NÃO sobem pro PaletCD (nem débito, nem baixa de REV), senão duplicaria.
-function sfEhValeNovo(rec){
-  return /^VP2027/.test(String(rec&&rec.controle||'').toUpperCase().replace(/\s+/g,''));
-}
-
 async function sfSyncPaletCD(rec, prev){
-  const ant  = prev || null;
-  if(sfEhValeNovo(rec)){
-    if(ant) await sfRevertPaletCD(ant);   // se já tinha subido antes (ex.: controle editado), estorna
-    return null;
-  }
   const novo = sfEstado(rec);
+  const ant  = prev || null;
   if(!novo && !ant) return null;
 
   let deltaOk = false;
@@ -3009,7 +3161,7 @@ const PVX_CONFIG={
 // A conta de administrador é criada no Firebase Console do projeto
 // produtividade-6d86f (Authentication > Users). A autorização real
 // é feita pelas RULES do Realtime Database (nó /admins/{uid} = true).
-const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas'];
+const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas','colab'];
 
 // ===================== AUDITORIA DE ERROS =====================
 async function runAudit(){
@@ -3427,7 +3579,9 @@ async function pvxSave(S){
 }
 // matrícula: tira zeros à esquerda; tudo-zero vira '0'; não-numérico em maiúsculo
 function pvxNormMat(m){m=String(m==null?'':m).trim();return (/^\d+$/.test(m))?(m.replace(/^0+/,'')||'0'):m.toUpperCase();}
-const _godNomeMat={}; COLABORADORES.forEach(c=>{_godNomeMat[(c.nome||'').trim().toUpperCase()]=pvxNormMat(c.mat);});
+let _godNomeMat={};
+function rebuildNomeMat(){_godNomeMat={};getColabsTodos().forEach(c=>{_godNomeMat[(c.nome||'').trim().toUpperCase()]=pvxNormMat(c.mat);});}
+rebuildNomeMat();
 function pvxMatDoNome(nome){return _godNomeMat[(nome||'').trim().toUpperCase()]||null;}
 
 function pvxReset(){
@@ -3880,9 +4034,13 @@ function popSel(){
     const el=$(id);if(!el)return;
     el.innerHTML='<option value="">Selecione...</option>'+getLojasFmt().map(l=>`<option>${l}</option>`).join('');
   });
+  const ativos=getColabsAtivos(), todos=getColabsTodos();
   ['nOp','eOp','nCf','eCf','trMdlOp','trMdlMov','sfMExp','sfMMov','sfMConf'].forEach(id=>{
     const el=$(id);if(!el)return;
-    el.innerHTML='<option value="">Selecione...</option>'+COLABORADORES.sort((a,b)=>a.nome.localeCompare(b.nome)).map(c=>`<option value="${c.nome}" title="${c.cargo} | ${c.turno}">${c.nome}</option>`).join('');
+    const atual=el.value;
+    const lista=(id==='eOp'||id==='eCf')?todos:ativos; // edição mostra inativos p/ não perder o histórico
+    el.innerHTML='<option value="">Selecione...</option>'+lista.map(c=>`<option value="${escH(c.nome)}" title="${escH(c.cargo)} | ${escH(c.turno)}">${escH(c.nome)}${c.ativo?'':' (inativo)'}</option>`).join('');
+    if(atual)el.value=atual;
   });
 }
 

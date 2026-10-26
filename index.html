@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <!-- ============================================================
      GODMODE - Retorno de Materiais | FONTE OFICIAL v41
-     v41: tela "Colaboradores" (Sistema, so admin). Cadastro, edicao de cargo/turno,
-          inativar/reativar e excluir, gravando em retorno_app/colaboradores_extra/{chapa}.
-          A lista fixa COLABORADORES continua como base; o que esta no Firebase soma
-          ou sobrepoe pela chapa. Inativo some dos selects de lancamento e da
-          identificacao por chapa, mas continua na edicao e no ProdutiVix (historico).
-          Nome e chapa ficam travados na edicao para nao quebrar o historico.
+     v41: 3 temporarios com codigo TEMP0001..TEMP0003 (sem chapa do Oba).
+          7 colaboradores marcados como inativos: saem do login por chapa e
+          vao para o fim das listas (grupo INATIVOS). Continuam na base para
+          o historico ficar editavel e o volume migrar para o ProdutiVix.
+          Campo de chapa aceita letras (antes so teclado numerico).
      v40: (a) trava de duplicidade no lancamento.
               Retorno: mesma LOJA + mesmo n. de NF = BLOQUEIA, em qualquer data
               (a loja nao emite a mesma NF duas vezes). Lojas diferentes com o
@@ -184,7 +183,6 @@ tr:hover td{background:#F4F2EA}
   <div class="ni" id="nav-pvx" onclick="go(&#39;pvx&#39;)">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
   <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
-  <div class="ni" id="nav-colab" onclick="go(&#39;colab&#39;)">👷 <span>Colaboradores</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-paletcd-rec" onclick="reconciliarPaletCD()" title="Reenvia lançamentos que não chegaram no PaletCD por falha de sincronização">🔄 <span>Reconciliar PaletCD</span><span class="nc" id="navPaletcdCnt" style="display:none">0</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
@@ -505,30 +503,6 @@ tr:hover td{background:#F4F2EA}
   </div>
 </div>
 
-<!-- COLABORADORES -->
-<div class="pg" id="pg-colab">
-  <div class="scard">
-    <h2 id="cbTit">👷 Cadastrar Colaborador</h2>
-    <p>Quem for cadastrado aqui aparece na hora em todos os campos de Operador e Conferente, na identificação por chapa e no envio ao ProdutiVix. A chapa precisa ser a mesma do ProdutiVix.</p>
-    <div class="fg" style="margin-bottom:14px">
-      <div class="fld"><label>Chapa (matrícula) *</label><input type="text" inputmode="numeric" id="cbMat" placeholder="Ex: 20001498" autocomplete="off"></div>
-      <div class="fld s2"><label>Nome completo *</label><input type="text" id="cbNome" placeholder="Ex: ISAAC FERNANDES HENRIQUE DE MELO" autocomplete="off"></div>
-      <div class="fld"><label>Cargo *</label><input type="text" id="cbCargo" list="cbCargoList" placeholder="Ex: AUXILIAR DE HIGIENIZAÇÃO" autocomplete="off"><datalist id="cbCargoList"></datalist></div>
-      <div class="fld"><label>Turno *</label><input type="text" id="cbTurno" list="cbTurnoList" placeholder="Ex: LOG Reversa Superv T3" autocomplete="off"><datalist id="cbTurnoList"></datalist></div>
-    </div>
-    <button class="btn pri" id="cbBtn" onclick="salvarColab()">✓ Cadastrar Colaborador</button>
-    <button class="btn" id="cbCancel" style="display:none;margin-left:8px" onclick="limparColabForm()">Cancelar edição</button>
-  </div>
-  <div class="tbox">
-    <div class="thead2"><span class="ttit">Quadro de Colaboradores</span><span class="tcnt" id="cbCnt">0</span></div>
-    <div style="padding:8px 12px"><input type="text" id="cbBusca" placeholder="🔍 Buscar por nome, chapa, cargo ou turno" oninput="renderColabs()" style="width:100%;background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--r);color:var(--txt);padding:8px 11px;font-size:14px;outline:none"></div>
-    <div class="tscroll"><table>
-      <thead><tr><th>Chapa</th><th>Nome</th><th>Cargo</th><th>Turno</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody id="cbBody"></tbody>
-    </table></div>
-  </div>
-</div>
-
 <!-- EXPORTAR -->
 <div class="pg" id="pg-exp">
   <div class="scard">
@@ -792,7 +766,7 @@ tr:hover td{background:#F4F2EA}
     <div class="mh"><span>👤 Identificação</span></div>
     <div style="padding:16px">
       <p style="font-size:13px;color:var(--mut);margin:0 0 12px">Informe sua chapa (matrícula) para registrar os lançamentos em seu nome.</p>
-      <input type="text" id="chapaInp" placeholder="Ex: 02201539" inputmode="numeric" maxlength="8" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg2);color:var(--txt);font-size:15px;letter-spacing:1px;text-align:center" onkeydown="if(event.key===&#39;Enter&#39;)chapaOk()">
+      <input type="text" id="chapaInp" placeholder="Ex: 02201539 ou TEMP0001" maxlength="8" autocapitalize="characters" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--bg2);color:var(--txt);font-size:15px;letter-spacing:1px;text-align:center" onkeydown="if(event.key===&#39;Enter&#39;)chapaOk()">
       <div id="chapaErr" style="color:var(--red,#ef4444);font-size:12px;min-height:16px;margin-top:6px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
         <button class="btn" onclick="$(&#39;chapaMdl&#39;).classList.remove(&#39;open&#39;)">Agora não</button>
@@ -1083,33 +1057,26 @@ const COLABORADORES=[
   {mat:'02201867',nome:'YAGO HENRIQUE LOPES OLIVEIRA',cargo:'AUXILIAR DE LOGÍSTICA I',turno:'LOG Reversa Equipe T2'},
   {mat:'02201960',nome:'ELIENE LIMA OLIVEIRA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'LOG Reversa Equipe T2'},
   {mat:'20000451',nome:'GABRIEL DA SILVA FONSECA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'A DEFINIR'},
-  {mat:'02201977',nome:'MARCOS ANTONIO SILVA DA ROCHA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'A DEFINIR'}
+  {mat:'02201977',nome:'MARCOS ANTONIO SILVA DA ROCHA',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'A DEFINIR'},
+  // TEMPORARIOS (v41): sem chapa do Oba. Codigo TEMP sequencial, nunca reaproveitar.
+  {mat:'TEMP0001',nome:'NELSON PEREIRA DOS SANTOS FILHO',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'TEMPORÁRIO',temp:true},
+  {mat:'TEMP0002',nome:'BRUNO SILVA SANTOS',cargo:'OPERADOR DE CARGA E DESCARGA',turno:'TEMPORÁRIO',temp:true},
+  {mat:'TEMP0003',nome:'RUAN MAX LEITE',cargo:'CONFERENTE',turno:'TEMPORÁRIO',temp:true}
 ];
+// INATIVOS (v41): saem dos lancamentos novos e do login por chapa, mas continuam
+// aqui para o historico ficar editavel e o volume migrar para o ProdutiVix.
+const INATIVOS=['02201867','02201729','02201829','02201916','02201910','02201911','02201798'];
+COLABORADORES.forEach(c=>{ if(INATIVOS.includes(c.mat)) c.ativo=false; });
 const OPS=COLABORADORES.map(c=>c.nome).sort();
-
-// ===== COLABORADORES DO FIREBASE (v41) =====
-// retorno_app/colaboradores_extra/{chapa} = {mat,nome,cargo,turno,ativo,atualizado_em,atualizado_por}
-// Soma ou sobrepõe a lista fixa pela chapa.
-let COLAB_EXTRA={};
-function getColabsTodos(){
-  const m=new Map();
-  COLABORADORES.forEach(c=>m.set(c.mat,{...c,ativo:true,origem:'Padrão'}));
-  Object.values(COLAB_EXTRA).forEach(x=>{
-    if(!x||!x.mat)return;
-    const base=m.get(x.mat);
-    m.set(x.mat,{mat:x.mat,nome:x.nome||(base&&base.nome)||'',cargo:x.cargo||(base&&base.cargo)||'',
-      turno:x.turno||(base&&base.turno)||'',ativo:x.ativo!==false,origem:base?'Alterado':'Cadastrado'});
-  });
-  return [...m.values()].sort((a,b)=>a.nome.localeCompare(b.nome));
-}
-function getColabsAtivos(){return getColabsTodos().filter(c=>c.ativo);}
 
 // ===== IDENTIFICAÇÃO POR CHAPA =====
 // Chapas fora do quadro operacional autorizadas a lançar:
 const CHAPAS_EXTRA=[{mat:'02201539',nome:'MARCELO (ADMINISTRADOR)',cargo:'ADMINISTRADOR',turno:'ADM'}];
 function chapaLookup(m){
-  m=String(m||'').trim();
-  return getColabsAtivos().find(c=>c.mat===m)||CHAPAS_EXTRA.find(c=>c.mat===m)||null;
+  m=String(m||'').trim().toUpperCase();
+  const _c=COLABORADORES.find(c=>c.mat===m);
+  if(_c && _c.ativo===false) return null;
+  return COLABORADORES.find(c=>c.mat===m)||CHAPAS_EXTRA.find(c=>c.mat===m)||null;
 }
 function chapaAtual(){try{return JSON.parse(localStorage.getItem('gm_chapa'))||null}catch(e){return null}}
 function chapaBadge(){
@@ -1125,7 +1092,12 @@ function chapaAsk(force){
 }
 function chapaOk(){
   const c=chapaLookup($('chapaInp').value);
-  if(!c){$('chapaErr').textContent='Chapa não encontrada na lista de colaboradores.';return;}
+  if(!c){
+    const _v=String($('chapaInp').value||'').trim().toUpperCase();
+    const _i=COLABORADORES.find(x=>x.mat===_v&&x.ativo===false);
+    $('chapaErr').textContent=_i?'Colaborador inativo. Procure o administrador.':'Chapa não encontrada na lista de colaboradores.';
+    return;
+  }
   localStorage.setItem('gm_chapa',JSON.stringify({mat:c.mat,nome:c.nome}));
   $('chapaMdl').classList.remove('open');
   chapaBadge();
@@ -1172,7 +1144,6 @@ async function initFirebase() {
     fbReady = true;
     sts('Conectando...', 'a');
     lojasExtraListen();
-    colabExtraListen();
     await cacheBootstrap();   // carrega o cache do IndexedDB
     await loadData();
     atualizarBadgePaletCD();  // mostra se há lançamentos presos por falha do PaletCD
@@ -1526,7 +1497,6 @@ function go(p){
   if(p==='sfdash'){ ensureSf().then(renderSfDash); }
   if(p==='pvx'){pvxReset()}
   if(p==='lojas'){renderLojas()}
-  if(p==='colab'){renderColabs()}
   $('nav-admout').style.display=isAdmin()?'':'none';
 }
 
@@ -2267,119 +2237,6 @@ async function delLojaGodmode(num){
     ntfy('Loja excluída','ok');
   }catch(e){
     console.error('delLojaGodmode:',e);
-    ntfy('Falha ao excluir: '+(e&&e.message?e.message:'erro'),'er');
-  }
-}
-
-// ===================== CADASTRO DE COLABORADORES (v41) =====================
-function escH(t){return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-let _cbEditMat=null;
-function colabExtraListen(){
-  if(!DB)return;
-  DB.ref('retorno_app/colaboradores_extra').on('value',snap=>{
-    COLAB_EXTRA=snap.val()||{};
-    rebuildNomeMat();
-    popSel();
-    renderColabs();
-    chapaBadge();
-  },err=>console.error('colabExtraListen:',err));
-}
-function renderColabs(){
-  const body=$('cbBody');if(!body)return;
-  const todos=getColabsTodos();
-  // sugestões de cargo e turno a partir do quadro atual
-  const uniq=a=>[...new Set(a.filter(Boolean))].sort();
-  $('cbCargoList').innerHTML=uniq(todos.map(c=>c.cargo)).map(v=>`<option value="${escH(v)}"></option>`).join('');
-  $('cbTurnoList').innerHTML=uniq(todos.map(c=>c.turno)).map(v=>`<option value="${escH(v)}"></option>`).join('');
-  const q=($('cbBusca').value||'').trim().toUpperCase();
-  const lista=q?todos.filter(c=>(c.mat+' '+c.nome+' '+c.cargo+' '+c.turno).toUpperCase().includes(q)):todos;
-  const nAt=todos.filter(c=>c.ativo).length;
-  $('cbCnt').textContent=nAt.toLocaleString('pt-BR')+' ativo(s) · '+(todos.length-nAt).toLocaleString('pt-BR')+' inativo(s)';
-  body.innerHTML=lista.length?lista.map(c=>{
-    const fixo=c.mat==='00000000';
-    const acoes=fixo?'—':`<button class="btn" style="padding:4px 10px;font-size:12px" onclick="editarColab('${c.mat}')">✏️ Editar</button>
-      <button class="btn${c.ativo?' dng':''}" style="padding:4px 10px;font-size:12px;margin-left:4px" onclick="toggleColab('${c.mat}')">${c.ativo?'⛔ Inativar':'✅ Reativar'}</button>
-      ${c.origem==='Cadastrado'?`<button class="btn dng" style="padding:4px 10px;font-size:12px;margin-left:4px" title="Só use se foi cadastro errado" onclick="delColab('${c.mat}')">🗑</button>`:''}`;
-    return `<tr${c.ativo?'':' style="opacity:.55"'}>
-      <td>${escH(c.mat)}</td><td><strong>${escH(c.nome)}</strong></td><td>${escH(c.cargo)}</td><td>${escH(c.turno)}</td>
-      <td>${c.origem}</td><td>${c.ativo?'🟢 Ativo':'⚪ Inativo'}</td><td style="white-space:nowrap">${acoes}</td></tr>`;
-  }).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--mut);padding:20px">Nenhum colaborador encontrado</td></tr>';
-}
-function limparColabForm(){
-  _cbEditMat=null;
-  ['cbMat','cbNome','cbCargo','cbTurno'].forEach(id=>$(id).value='');
-  $('cbMat').disabled=false;$('cbNome').disabled=false;
-  $('cbTit').textContent='👷 Cadastrar Colaborador';
-  $('cbBtn').textContent='✓ Cadastrar Colaborador';
-  $('cbCancel').style.display='none';
-}
-function editarColab(mat){
-  const c=getColabsTodos().find(x=>x.mat===mat);if(!c)return;
-  _cbEditMat=mat;
-  $('cbMat').value=c.mat;$('cbNome').value=c.nome;$('cbCargo').value=c.cargo;$('cbTurno').value=c.turno;
-  $('cbMat').disabled=true;$('cbNome').disabled=true; // nome e chapa travados: são a chave do histórico
-  $('cbTit').textContent='✏️ Editar '+c.nome.split(' ')[0];
-  $('cbBtn').textContent='✓ Salvar alterações';
-  $('cbCancel').style.display='';
-  $('pg-colab').scrollIntoView({behavior:'smooth'});
-}
-async function salvarColab(){
-  if(!exigirAdmin('cadastrar colaborador'))return;
-  const mat=($('cbMat').value||'').replace(/\D/g,'');
-  const nome=($('cbNome').value||'').trim().replace(/\s+/g,' ').toUpperCase();
-  const cargo=($('cbCargo').value||'').trim().replace(/\s+/g,' ').toUpperCase();
-  const turno=($('cbTurno').value||'').trim().replace(/\s+/g,' ');
-  if(!mat){ntfy('Informe a chapa (só números)','er');return}
-  if(!nome||nome.split(' ').length<2){ntfy('Informe o nome completo','er');return}
-  if(!cargo){ntfy('Informe o cargo','er');return}
-  if(!turno){ntfy('Informe o turno','er');return}
-  const todos=getColabsTodos();
-  if(!_cbEditMat){
-    const porMat=todos.find(c=>c.mat===mat);
-    if(porMat){ntfy(`A chapa ${mat} já é de ${porMat.nome}${porMat.ativo?'':' (inativo, use Reativar)'}`,'er');return}
-    const porNome=todos.find(c=>c.nome===nome);
-    if(porNome){ntfy(`Já existe ${nome} com a chapa ${porNome.mat}`,'er');return}
-  }
-  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase. O colaborador NÃO foi salvo.','er');return}
-  const base=todos.find(c=>c.mat===(_cbEditMat||mat));
-  const ch=chapaAtual();
-  const rec={mat:_cbEditMat||mat,nome:_cbEditMat?base.nome:nome,cargo,turno,ativo:_cbEditMat?base.ativo:true,
-    atualizado_em:new Date().toISOString(),atualizado_por:ch?ch.mat:'admin'};
-  try{
-    await DB.ref('retorno_app/colaboradores_extra/'+rec.mat).set(rec);
-    ntfy(_cbEditMat?`${rec.nome} atualizado`:`${rec.nome} cadastrado!`,'ok');
-    limparColabForm();
-  }catch(e){
-    console.error('salvarColab:',e);
-    ntfy('Falha ao salvar: '+(e&&e.message?e.message:'erro'),'er');
-  }
-}
-async function toggleColab(mat){
-  if(!exigirAdmin('inativar colaborador'))return;
-  const c=getColabsTodos().find(x=>x.mat===mat);if(!c)return;
-  const novo=!c.ativo;
-  if(!novo&&!confirm(`Inativar ${c.nome}? Ele some dos lançamentos novos, mas o histórico continua.`))return;
-  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase. Nada foi alterado.','er');return}
-  const ch=chapaAtual();
-  try{
-    await DB.ref('retorno_app/colaboradores_extra/'+mat).set({mat:c.mat,nome:c.nome,cargo:c.cargo,turno:c.turno,ativo:novo,
-      atualizado_em:new Date().toISOString(),atualizado_por:ch?ch.mat:'admin'});
-    ntfy(`${c.nome} ${novo?'reativado':'inativado'}`,'ok');
-  }catch(e){
-    console.error('toggleColab:',e);
-    ntfy('Falha ao alterar: '+(e&&e.message?e.message:'erro'),'er');
-  }
-}
-async function delColab(mat){
-  if(!exigirAdmin('excluir colaborador'))return;
-  const c=getColabsTodos().find(x=>x.mat===mat);if(!c||c.origem!=='Cadastrado')return;
-  if(!confirm(`Excluir o cadastro de ${c.nome}? Use só se foi cadastro errado. Se ele saiu da empresa, use Inativar.`))return;
-  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase. Nada foi excluído.','er');return}
-  try{
-    await DB.ref('retorno_app/colaboradores_extra/'+mat).remove();
-    ntfy('Cadastro excluído','ok');
-  }catch(e){
-    console.error('delColab:',e);
     ntfy('Falha ao excluir: '+(e&&e.message?e.message:'erro'),'er');
   }
 }
@@ -3161,7 +3018,7 @@ const PVX_CONFIG={
 // A conta de administrador é criada no Firebase Console do projeto
 // produtividade-6d86f (Authentication > Users). A autorização real
 // é feita pelas RULES do Realtime Database (nó /admins/{uid} = true).
-const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas','colab'];
+const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas'];
 
 // ===================== AUDITORIA DE ERROS =====================
 async function runAudit(){
@@ -3579,9 +3436,7 @@ async function pvxSave(S){
 }
 // matrícula: tira zeros à esquerda; tudo-zero vira '0'; não-numérico em maiúsculo
 function pvxNormMat(m){m=String(m==null?'':m).trim();return (/^\d+$/.test(m))?(m.replace(/^0+/,'')||'0'):m.toUpperCase();}
-let _godNomeMat={};
-function rebuildNomeMat(){_godNomeMat={};getColabsTodos().forEach(c=>{_godNomeMat[(c.nome||'').trim().toUpperCase()]=pvxNormMat(c.mat);});}
-rebuildNomeMat();
+const _godNomeMat={}; COLABORADORES.forEach(c=>{_godNomeMat[(c.nome||'').trim().toUpperCase()]=pvxNormMat(c.mat);});
 function pvxMatDoNome(nome){return _godNomeMat[(nome||'').trim().toUpperCase()]||null;}
 
 function pvxReset(){
@@ -4034,13 +3889,14 @@ function popSel(){
     const el=$(id);if(!el)return;
     el.innerHTML='<option value="">Selecione...</option>'+getLojasFmt().map(l=>`<option>${l}</option>`).join('');
   });
-  const ativos=getColabsAtivos(), todos=getColabsTodos();
   ['nOp','eOp','nCf','eCf','trMdlOp','trMdlMov','sfMExp','sfMMov','sfMConf'].forEach(id=>{
     const el=$(id);if(!el)return;
-    const atual=el.value;
-    const lista=(id==='eOp'||id==='eCf')?todos:ativos; // edição mostra inativos p/ não perder o histórico
-    el.innerHTML='<option value="">Selecione...</option>'+lista.map(c=>`<option value="${escH(c.nome)}" title="${escH(c.cargo)} | ${escH(c.turno)}">${escH(c.nome)}${c.ativo?'':' (inativo)'}</option>`).join('');
-    if(atual)el.value=atual;
+    // v41: ativos em ordem alfabetica; inativos agrupados no fim da lista
+    const _ord=[...COLABORADORES].sort((a,b)=>a.nome.localeCompare(b.nome));
+    const _opt=c=>`<option value="${c.nome}" title="${c.cargo} | ${c.turno}">${c.nome}${c.temp?' (TEMP)':''}</option>`;
+    const _at=_ord.filter(c=>c.ativo!==false), _in=_ord.filter(c=>c.ativo===false);
+    el.innerHTML='<option value="">Selecione...</option>'+_at.map(_opt).join('')
+      +(_in.length?'<optgroup label="── INATIVOS ──">'+_in.map(_opt).join('')+'</optgroup>':'');
   });
 }
 
@@ -4150,5 +4006,5 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) idleRese
 idleReset();
 </script>
 
-<script>console.log("%cGODMODE BUILD-CHECK v39 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
+<script>console.log("%cGODMODE BUILD-CHECK v41 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
 </body></html>

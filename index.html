@@ -6,6 +6,8 @@
           vao para o fim das listas (grupo INATIVOS). Continuam na base para
           o historico ficar editavel e o volume migrar para o ProdutiVix.
           Campo de chapa aceita letras (antes so teclado numerico).
+          Tela Temporarios (admin): cadastra e inativa temporarios em
+          retorno_app/colab_temp, sem precisar mexer no codigo.
      v40: (a) trava de duplicidade no lancamento.
               Retorno: mesma LOJA + mesmo n. de NF = BLOQUEIA, em qualquer data
               (a loja nao emite a mesma NF duas vezes). Lojas diferentes com o
@@ -183,6 +185,7 @@ tr:hover td{background:#F4F2EA}
   <div class="ni" id="nav-pvx" onclick="go(&#39;pvx&#39;)">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
   <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
+  <div class="ni" id="nav-temp" onclick="go(&#39;temp&#39;)">🕒 <span>Temporários</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-paletcd-rec" onclick="reconciliarPaletCD()" title="Reenvia lançamentos que não chegaram no PaletCD por falha de sincronização">🔄 <span>Reconciliar PaletCD</span><span class="nc" id="navPaletcdCnt" style="display:none">0</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
@@ -483,6 +486,31 @@ tr:hover td{background:#F4F2EA}
 </div>
 
 <!-- EXPORTAR -->
+<!-- TEMPORARIOS -->
+<div class="pg" id="pg-temp">
+  <div class="scard">
+    <h2>🕒 Colaboradores temporários</h2>
+    <p>Para quem não tem chapa do Oba. Cadastre primeiro no ProdutiVix e use aqui o <strong>mesmo código TEMP</strong>, senão o volume não migra. O código sugerido é o próximo livre deste app; se o ProdutiVix gerou outro, troque antes de salvar.</p>
+    <div class="fg" style="margin-bottom:14px">
+      <div class="fld"><label>Código *</label><input type="text" id="tpCod" placeholder="TEMP0004" maxlength="8" style="text-transform:uppercase"></div>
+      <div class="fld"><label>Função *</label><select id="tpFunc">
+        <option value="">Selecione...</option>
+        <option>OPERADOR DE CARGA E DESCARGA</option><option>CONFERENTE</option>
+        <option>OPERADOR DE EMPILHADEIRA</option><option>AUXILIAR DE LOGÍSTICA</option>
+      </select></div>
+      <div class="fld s2"><label>Nome completo *</label><input type="text" id="tpNome" placeholder="Ex: JOAO DA SILVA" style="text-transform:uppercase"></div>
+    </div>
+    <button class="btn pri" onclick="addTemp()">✓ Cadastrar temporário</button>
+  </div>
+  <div class="tbox">
+    <div class="thead2"><span class="ttit">Temporários</span><span class="tcnt" id="tpCnt">0</span></div>
+    <div class="tscroll"><table>
+      <thead><tr><th>Código</th><th>Nome</th><th>Função</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody id="tpBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
 <!-- LOJAS -->
 <div class="pg" id="pg-lojas">
   <div class="scard">
@@ -1069,6 +1097,75 @@ const INATIVOS=['02201867','02201729','02201829','02201916','02201910','02201911
 COLABORADORES.forEach(c=>{ if(INATIVOS.includes(c.mat)) c.ativo=false; });
 const OPS=COLABORADORES.map(c=>c.nome).sort();
 
+// ===== TEMPORARIOS CADASTRADOS PELA TELA (v41) =====
+// Ficam em retorno_app/colab_temp/{codigo}. Sao somados ao COLABORADORES em
+// tempo real: entram nos dropdowns, no login por chapa e na migracao.
+// Nao ha exclusao, so inativacao: um codigo usado nunca e reaproveitado.
+let TEMP_EXTRA=[];
+function tempListen(){
+  if(!DB)return;
+  DB.ref('retorno_app/colab_temp').on('value',snap=>{
+    const v=snap.val()||{};
+    // remove os extras antigos e reaplica
+    for(let i=COLABORADORES.length-1;i>=0;i--) if(COLABORADORES[i]._extra) COLABORADORES.splice(i,1);
+    TEMP_EXTRA=Object.values(v);
+    TEMP_EXTRA.forEach(t=>{
+      const fixo=COLABORADORES.find(c=>c.mat===t.mat);
+      if(fixo){ if(t.ativo===false) fixo.ativo=false; else delete fixo.ativo; return; }  // TEMP0001..3 do codigo
+      COLABORADORES.push({mat:t.mat,nome:t.nome,cargo:t.cargo,turno:'TEMPORÁRIO',temp:true,ativo:t.ativo!==false,_extra:true});
+    });
+    COLABORADORES.forEach(c=>{ if(c.ativo===true) delete c.ativo; });
+    try{ COLABORADORES.forEach(c=>{_godNomeMat[(c.nome||'').trim().toUpperCase()]=pvxNormMat(c.mat);}); }catch(e){}
+    popSel(); renderTemp();
+  });
+}
+function proxTempCod(){
+  let mx=0;
+  COLABORADORES.forEach(c=>{const m=/^TEMP(\d+)$/.exec(c.mat||'');if(m)mx=Math.max(mx,+m[1]);});
+  return 'TEMP'+String(mx+1).padStart(4,'0');
+}
+function renderTemp(){
+  const body=$('tpBody'); if(!body)return;
+  const cod=$('tpCod'); if(cod&&!cod.value) cod.value=proxTempCod();
+  const lista=COLABORADORES.filter(c=>c.temp).sort((a,b)=>a.mat.localeCompare(b.mat));
+  $('tpCnt').textContent=lista.length+' temporário(s)';
+  body.innerHTML=lista.length?lista.map(c=>{
+    const at=c.ativo!==false;
+    return `<tr><td><strong>${c.mat}</strong></td><td>${c.nome}</td><td>${c.cargo||'—'}</td>
+      <td>${c._extra?'Cadastrado':'Padrão'}</td>
+      <td><span class="tag ${at?'ok':'neu'}">${at?'Ativo':'Inativo'}</span></td>
+      <td><button class="btn ${at?'dng':''}" style="padding:4px 12px;font-size:12px" onclick="tglTemp('${c.mat}',${at?'false':'true'})">${at?'Inativar':'Reativar'}</button></td></tr>`;
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--mut);padding:20px">Nenhum temporário</td></tr>';
+}
+async function addTemp(){
+  if(!exigirAdmin('cadastrar temporário'))return;
+  const cod=($('tpCod').value||'').trim().toUpperCase();
+  const nome=($('tpNome').value||'').trim().toUpperCase().replace(/\s+/g,' ');
+  const cargo=$('tpFunc').value;
+  if(!/^TEMP\d{4}$/.test(cod)){ntfy('Código no formato TEMP0004','er');$('tpCod').focus();return}
+  if(!nome){ntfy('Informe o nome','er');$('tpNome').focus();return}
+  if(!cargo){ntfy('Selecione a função','er');$('tpFunc').focus();return}
+  if(COLABORADORES.some(c=>c.mat===cod)){ntfy('O código '+cod+' já foi usado. Códigos não são reaproveitados.','er');return}
+  if(COLABORADORES.some(c=>(c.nome||'').toUpperCase()===nome)){ntfy('Já existe colaborador com esse nome','er');return}
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase — nada foi salvo.','er');return}
+  try{
+    await DB.ref('retorno_app/colab_temp/'+cod).set({mat:cod,nome,cargo,ativo:true,criado_em:new Date().toISOString()});
+    ntfy(nome+' cadastrado como '+cod,'ok');
+    $('tpNome').value='';$('tpFunc').value='';$('tpCod').value='';renderTemp();
+  }catch(e){ntfy('Falha ao cadastrar: '+(e.message||e.code),'er');}
+}
+async function tglTemp(cod,ativo){
+  if(!exigirAdmin('alterar temporário'))return;
+  const c=COLABORADORES.find(x=>x.mat===cod); if(!c)return;
+  if(!ativo&&!confirm('Inativar '+c.nome+' ('+cod+')? Ele sai das listas de lançamento e do login, mas o histórico fica.'))return;
+  if(!fbReady||!DB){ntfy('Sem conexão com o Firebase.','er');return}
+  try{
+    // temporarios fixos do codigo tambem ganham registro aqui para guardar o status
+    await DB.ref('retorno_app/colab_temp/'+cod).update({mat:cod,nome:c.nome,cargo:c.cargo,ativo:!!ativo});
+    ntfy(c.nome+(ativo?' reativado':' inativado'),'ok');
+  }catch(e){ntfy('Falha: '+(e.message||e.code),'er');}
+}
+
 // ===== IDENTIFICAÇÃO POR CHAPA =====
 // Chapas fora do quadro operacional autorizadas a lançar:
 const CHAPAS_EXTRA=[{mat:'02201539',nome:'MARCELO (ADMINISTRADOR)',cargo:'ADMINISTRADOR',turno:'ADM'}];
@@ -1144,6 +1241,7 @@ async function initFirebase() {
     fbReady = true;
     sts('Conectando...', 'a');
     lojasExtraListen();
+    tempListen();
     await cacheBootstrap();   // carrega o cache do IndexedDB
     await loadData();
     atualizarBadgePaletCD();  // mostra se há lançamentos presos por falha do PaletCD
@@ -1497,6 +1595,7 @@ function go(p){
   if(p==='sfdash'){ ensureSf().then(renderSfDash); }
   if(p==='pvx'){pvxReset()}
   if(p==='lojas'){renderLojas()}
+  if(p==='temp'){renderTemp()}
   $('nav-admout').style.display=isAdmin()?'':'none';
 }
 
@@ -3018,7 +3117,7 @@ const PVX_CONFIG={
 // A conta de administrador é criada no Firebase Console do projeto
 // produtividade-6d86f (Authentication > Users). A autorização real
 // é feita pelas RULES do Realtime Database (nó /admins/{uid} = true).
-const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas'];
+const ADMIN_PAGES=['pvx','exp','cfg','audit','lojas','temp'];
 
 // ===================== AUDITORIA DE ERROS =====================
 async function runAudit(){
@@ -3891,12 +3990,14 @@ function popSel(){
   });
   ['nOp','eOp','nCf','eCf','trMdlOp','trMdlMov','sfMExp','sfMMov','sfMConf'].forEach(id=>{
     const el=$(id);if(!el)return;
+    const _sel=el.value;   // preserva a escolha se a lista recarregar no meio do lancamento
     // v41: ativos em ordem alfabetica; inativos agrupados no fim da lista
     const _ord=[...COLABORADORES].sort((a,b)=>a.nome.localeCompare(b.nome));
     const _opt=c=>`<option value="${c.nome}" title="${c.cargo} | ${c.turno}">${c.nome}${c.temp?' (TEMP)':''}</option>`;
     const _at=_ord.filter(c=>c.ativo!==false), _in=_ord.filter(c=>c.ativo===false);
     el.innerHTML='<option value="">Selecione...</option>'+_at.map(_opt).join('')
       +(_in.length?'<optgroup label="── INATIVOS ──">'+_in.map(_opt).join('')+'</optgroup>':'');
+    if(_sel) el.value=_sel;
   });
 }
 

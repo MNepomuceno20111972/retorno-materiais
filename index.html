@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v41
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v42
+     v42: tela Temporarios virou Colaboradores. Nova tabela "Todos os
+          colaboradores" (efetivos + temporarios) com Inativar/Reativar.
+          Status gravado em retorno_app/colab_temp/{chapa}.ativo (mesmo
+          no ja usado pelos temporarios), sem mexer no codigo.
      v41: 3 temporarios com codigo TEMP0001..TEMP0003 (sem chapa do Oba).
           7 colaboradores marcados como inativos: saem do login por chapa e
           vao para o fim das listas (grupo INATIVOS). Continuam na base para
@@ -185,7 +189,7 @@ tr:hover td{background:#F4F2EA}
   <div class="ni" id="nav-pvx" onclick="go(&#39;pvx&#39;)">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
   <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
-  <div class="ni" id="nav-temp" onclick="go(&#39;temp&#39;)">🕒 <span>Temporários</span></div>
+  <div class="ni" id="nav-temp" onclick="go(&#39;temp&#39;)">👥 <span>Colaboradores</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-paletcd-rec" onclick="reconciliarPaletCD()" title="Reenvia lançamentos que não chegaram no PaletCD por falha de sincronização">🔄 <span>Reconciliar PaletCD</span><span class="nc" id="navPaletcdCnt" style="display:none">0</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
@@ -507,6 +511,17 @@ tr:hover td{background:#F4F2EA}
     <div class="tscroll"><table>
       <thead><tr><th>Código</th><th>Nome</th><th>Função</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="tpBody"></tbody>
+    </table></div>
+  </div>
+  <div class="tbox" style="margin-top:14px">
+    <div class="thead2"><span class="ttit">Todos os colaboradores</span><span class="tcnt" id="clCnt">0</span></div>
+    <div style="display:flex;gap:8px;padding:10px 12px;flex-wrap:wrap">
+      <input type="text" id="clBusca" placeholder="Buscar nome ou chapa..." oninput="renderColabs()" style="flex:1;min-width:180px">
+      <select id="clSt" onchange="renderColabs()"><option value="">Todos</option><option value="A">Ativos</option><option value="I">Inativos</option></select>
+    </div>
+    <div class="tscroll"><table>
+      <thead><tr><th>Chapa</th><th>Nome</th><th>Função</th><th>Turno</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody id="clBody"></tbody>
     </table></div>
   </div>
 </div>
@@ -1124,7 +1139,25 @@ function proxTempCod(){
   COLABORADORES.forEach(c=>{const m=/^TEMP(\d+)$/.exec(c.mat||'');if(m)mx=Math.max(mx,+m[1]);});
   return 'TEMP'+String(mx+1).padStart(4,'0');
 }
+function renderColabs(){
+  const body=$('clBody'); if(!body)return;
+  const q=(($('clBusca')||{}).value||'').trim().toUpperCase(), st=($('clSt')||{}).value||'';
+  const lista=COLABORADORES.filter(c=>{
+    const at=c.ativo!==false;
+    if(st==='A'&&!at)return false; if(st==='I'&&at)return false;
+    return !q||(c.nome||'').toUpperCase().includes(q)||(c.mat||'').toUpperCase().includes(q);
+  }).sort((a,b)=>((a.ativo===false)-(b.ativo===false))||a.nome.localeCompare(b.nome));
+  const nI=COLABORADORES.filter(c=>c.ativo===false).length;
+  $('clCnt').textContent=(COLABORADORES.length-nI)+' ativos · '+nI+' inativos';
+  body.innerHTML=lista.length?lista.map(c=>{
+    const at=c.ativo!==false;
+    return `<tr><td><strong>${c.mat}</strong></td><td>${c.nome}</td><td>${c.cargo||'—'}</td><td>${c.turno||'—'}</td>
+      <td><span class="tag ${at?'ok':'neu'}">${at?'Ativo':'Inativo'}</span></td>
+      <td><button class="btn ${at?'dng':''}" style="padding:4px 12px;font-size:12px" onclick="tglTemp('${c.mat}',${at?'false':'true'})">${at?'Inativar':'Reativar'}</button></td></tr>`;
+  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--mut);padding:20px">Nenhum colaborador</td></tr>';
+}
 function renderTemp(){
+  renderColabs();
   const body=$('tpBody'); if(!body)return;
   const cod=$('tpCod'); if(cod&&!cod.value) cod.value=proxTempCod();
   const lista=COLABORADORES.filter(c=>c.temp).sort((a,b)=>a.mat.localeCompare(b.mat));
@@ -1155,12 +1188,12 @@ async function addTemp(){
   }catch(e){ntfy('Falha ao cadastrar: '+(e.message||e.code),'er');}
 }
 async function tglTemp(cod,ativo){
-  if(!exigirAdmin('alterar temporário'))return;
+  if(!exigirAdmin('alterar colaborador'))return;
   const c=COLABORADORES.find(x=>x.mat===cod); if(!c)return;
   if(!ativo&&!confirm('Inativar '+c.nome+' ('+cod+')? Ele sai das listas de lançamento e do login, mas o histórico fica.'))return;
   if(!fbReady||!DB){ntfy('Sem conexão com o Firebase.','er');return}
   try{
-    // temporarios fixos do codigo tambem ganham registro aqui para guardar o status
+    // colaboradores fixos do codigo (efetivos e TEMP0001..3) tambem ganham registro aqui para guardar o status
     await DB.ref('retorno_app/colab_temp/'+cod).update({mat:cod,nome:c.nome,cargo:c.cargo,ativo:!!ativo});
     ntfy(c.nome+(ativo?' reativado':' inativado'),'ok');
   }catch(e){ntfy('Falha: '+(e.message||e.code),'er');}

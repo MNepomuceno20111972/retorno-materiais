@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <!-- ============================================================
      GODMODE - Retorno de Materiais | FONTE OFICIAL v42
-     v42: tela Temporarios virou Colaboradores. Nova tabela "Todos os
-          colaboradores" (efetivos + temporarios) com Inativar/Reativar.
-          Status gravado em retorno_app/colab_temp/{chapa}.ativo (mesmo
-          no ja usado pelos temporarios), sem mexer no codigo.
+     v42: proteção contra falha de carregamento do Firebase
+          (ERR_INSUFFICIENT_RESOURCES). Confere se app/database/auth
+          carregaram, tenta baixar de novo (3 tentativas) e, se não der,
+          mostra aviso na tela em vez de quebrar em cascata. Admin,
+          ProdutiVix e PaletCD só iniciam depois do auth confirmado.
      v41: 3 temporarios com codigo TEMP0001..TEMP0003 (sem chapa do Oba).
           7 colaboradores marcados como inativos: saem do login por chapa e
           vao para o fim das listas (grupo INATIVOS). Continuam na base para
@@ -48,6 +49,52 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script>
+// v42: garante que os 3 SDKs do Firebase carregaram. Se o Chrome recusou
+// algum (ERR_INSUFFICIENT_RESOURCES, rede instável), tenta baixar de novo.
+window.FB_PRONTO=(function(){
+  const V='10.12.5', BASE='https://www.gstatic.com/firebasejs/'+V+'/';
+  const ok={
+    app:()=>typeof firebase!=='undefined'&&typeof firebase.initializeApp==='function',
+    database:()=>ok.app()&&typeof firebase.database==='function',
+    auth:()=>ok.app()&&typeof firebase.auth==='function'
+  };
+  const espera=ms=>new Promise(r=>setTimeout(r,ms));
+  function carregar(nome){
+    return new Promise(res=>{
+      const sc=document.createElement('script');
+      sc.src=BASE+'firebase-'+nome+'-compat.js?r='+Date.now();
+      sc.onload=()=>res(true); sc.onerror=()=>res(false);
+      document.head.appendChild(sc);
+    });
+  }
+  async function garantir(nome){
+    for(let t=1;t<=3&&!ok[nome]();t++){
+      console.warn('Firebase '+nome+' não carregou. Tentativa '+t+' de 3...');
+      await espera(1500*t);
+      await carregar(nome);
+    }
+    return ok[nome]();
+  }
+  return new Promise(res=>{
+    const ir=async()=>{
+      if(!await garantir('app')) return res(false);
+      const d=await garantir('database'), a=await garantir('auth');
+      res(d&&a);
+    };
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',ir); else ir();
+  });
+})();
+function avisoFirebase(){
+  if(document.getElementById('fbAviso')) return;
+  const d=document.createElement('div');
+  d.id='fbAviso';
+  d.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99999;background:#c2410c;color:#fff;padding:14px 16px;font:600 15px system-ui,sans-serif;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 10px rgba(0,0,0,.2)';
+  d.innerHTML='<span>⚠️ O navegador não conseguiu carregar a conexão com o banco (sem recurso ou rede instável). Feche abas que não está usando e recarregue. Nada foi gravado.</span>'+
+    '<button onclick="location.reload()" style="min-height:44px;padding:0 18px;border:0;border-radius:8px;background:#fff;color:#c2410c;font-weight:700;cursor:pointer">Recarregar</button>';
+  document.body.appendChild(d);
+}
+</script>
 <style>
 :root{--bg:#F0EEE6;--bg2:#FAF9F5;--bg3:#E8E5DA;--bdr:#DEDACE;--bdr2:#C5C0AF;--acc:#2563eb;--acc2:#1d4ed8;--grn:#15803d;--red:#c2410c;--amb:#b45309;--txt:#1F1E1D;--mut:#7A7568;--card:#FDFCF8;--r:8px;--rl:14px;--sh:0 1px 2px rgba(60,54,40,.05),0 4px 12px rgba(60,54,40,.06);--sh2:0 2px 4px rgba(60,54,40,.06),0 12px 28px rgba(60,54,40,.10)}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -189,7 +236,7 @@ tr:hover td{background:#F4F2EA}
   <div class="ni" id="nav-pvx" onclick="go(&#39;pvx&#39;)">📊 <span>Produtividade → ProdutiVix 🔒</span></div>
   <div class="nlbl">Sistema 🔒</div>
   <div class="ni" id="nav-lojas" onclick="go(&#39;lojas&#39;)">🏬 <span>Cadastrar Lojas</span></div>
-  <div class="ni" id="nav-temp" onclick="go(&#39;temp&#39;)">👥 <span>Colaboradores</span></div>
+  <div class="ni" id="nav-temp" onclick="go(&#39;temp&#39;)">🕒 <span>Temporários</span></div>
   <div class="ni" id="nav-exp" onclick="go(&#39;exp&#39;)">⬇️ <span>Exportar CSV</span></div>
   <div class="ni" id="nav-paletcd-rec" onclick="reconciliarPaletCD()" title="Reenvia lançamentos que não chegaram no PaletCD por falha de sincronização">🔄 <span>Reconciliar PaletCD</span><span class="nc" id="navPaletcdCnt" style="display:none">0</span></div>
   <div class="ni" id="nav-cfg" onclick="go(&#39;cfg&#39;)">⚙️ <span>Configuração</span></div>
@@ -511,17 +558,6 @@ tr:hover td{background:#F4F2EA}
     <div class="tscroll"><table>
       <thead><tr><th>Código</th><th>Nome</th><th>Função</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody id="tpBody"></tbody>
-    </table></div>
-  </div>
-  <div class="tbox" style="margin-top:14px">
-    <div class="thead2"><span class="ttit">Todos os colaboradores</span><span class="tcnt" id="clCnt">0</span></div>
-    <div style="display:flex;gap:8px;padding:10px 12px;flex-wrap:wrap">
-      <input type="text" id="clBusca" placeholder="Buscar nome ou chapa..." oninput="renderColabs()" style="flex:1;min-width:180px">
-      <select id="clSt" onchange="renderColabs()"><option value="">Todos</option><option value="A">Ativos</option><option value="I">Inativos</option></select>
-    </div>
-    <div class="tscroll"><table>
-      <thead><tr><th>Chapa</th><th>Nome</th><th>Função</th><th>Turno</th><th>Status</th><th>Ações</th></tr></thead>
-      <tbody id="clBody"></tbody>
     </table></div>
   </div>
 </div>
@@ -1139,25 +1175,7 @@ function proxTempCod(){
   COLABORADORES.forEach(c=>{const m=/^TEMP(\d+)$/.exec(c.mat||'');if(m)mx=Math.max(mx,+m[1]);});
   return 'TEMP'+String(mx+1).padStart(4,'0');
 }
-function renderColabs(){
-  const body=$('clBody'); if(!body)return;
-  const q=(($('clBusca')||{}).value||'').trim().toUpperCase(), st=($('clSt')||{}).value||'';
-  const lista=COLABORADORES.filter(c=>{
-    const at=c.ativo!==false;
-    if(st==='A'&&!at)return false; if(st==='I'&&at)return false;
-    return !q||(c.nome||'').toUpperCase().includes(q)||(c.mat||'').toUpperCase().includes(q);
-  }).sort((a,b)=>((a.ativo===false)-(b.ativo===false))||a.nome.localeCompare(b.nome));
-  const nI=COLABORADORES.filter(c=>c.ativo===false).length;
-  $('clCnt').textContent=(COLABORADORES.length-nI)+' ativos · '+nI+' inativos';
-  body.innerHTML=lista.length?lista.map(c=>{
-    const at=c.ativo!==false;
-    return `<tr><td><strong>${c.mat}</strong></td><td>${c.nome}</td><td>${c.cargo||'—'}</td><td>${c.turno||'—'}</td>
-      <td><span class="tag ${at?'ok':'neu'}">${at?'Ativo':'Inativo'}</span></td>
-      <td><button class="btn ${at?'dng':''}" style="padding:4px 12px;font-size:12px" onclick="tglTemp('${c.mat}',${at?'false':'true'})">${at?'Inativar':'Reativar'}</button></td></tr>`;
-  }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--mut);padding:20px">Nenhum colaborador</td></tr>';
-}
 function renderTemp(){
-  renderColabs();
   const body=$('tpBody'); if(!body)return;
   const cod=$('tpCod'); if(cod&&!cod.value) cod.value=proxTempCod();
   const lista=COLABORADORES.filter(c=>c.temp).sort((a,b)=>a.mat.localeCompare(b.mat));
@@ -1188,12 +1206,12 @@ async function addTemp(){
   }catch(e){ntfy('Falha ao cadastrar: '+(e.message||e.code),'er');}
 }
 async function tglTemp(cod,ativo){
-  if(!exigirAdmin('alterar colaborador'))return;
+  if(!exigirAdmin('alterar temporário'))return;
   const c=COLABORADORES.find(x=>x.mat===cod); if(!c)return;
   if(!ativo&&!confirm('Inativar '+c.nome+' ('+cod+')? Ele sai das listas de lançamento e do login, mas o histórico fica.'))return;
   if(!fbReady||!DB){ntfy('Sem conexão com o Firebase.','er');return}
   try{
-    // colaboradores fixos do codigo (efetivos e TEMP0001..3) tambem ganham registro aqui para guardar o status
+    // temporarios fixos do codigo tambem ganham registro aqui para guardar o status
     await DB.ref('retorno_app/colab_temp/'+cod).update({mat:cod,nome:c.nome,cargo:c.cargo,ativo:!!ativo});
     ntfy(c.nome+(ativo?' reativado':' inativado'),'ok');
   }catch(e){ntfy('Falha: '+(e.message||e.code),'er');}
@@ -1261,6 +1279,13 @@ const PS = 25;
 
 async function initFirebase() {
   try {
+    // v42: não segue se o SDK não carregou (evita "auth is not a function")
+    if(!(await window.FB_PRONTO)){
+      console.error('Firebase SDK incompleto: app/database/auth não carregaram.');
+      sts('Sem conexão com o banco','r');
+      avisoFirebase();
+      return;
+    }
     // Verifica o app [DEFAULT] pelo nome: o app secundário 'produtivix' (login admin)
     // é criado antes deste ponto, então apps.length nunca é zero.
     if (!firebase.apps.some(a=>a.name==='[DEFAULT]')) firebase.initializeApp(FB_CONFIG);
@@ -2628,6 +2653,8 @@ let PALETCD_DB = null, _paletcdAuth = null;
 // App Firebase secundário isolado para o projeto paletcd + login anônimo
 function paletcdInit() {
   if (_paletcdAuth) return _paletcdAuth;
+  if (typeof firebase==='undefined'||typeof firebase.auth!=='function')
+    return Promise.reject(new Error('conexão do navegador não carregou (feche abas e recarregue). Lançamento ficou na fila.'));
   const app = firebase.apps.find(a => a.name === 'paletcd')
             || firebase.initializeApp(PALETCD_CONFIG, 'paletcd');
   PALETCD_DB = app.database();
@@ -3345,7 +3372,7 @@ let _admPend=null, _admUser=null;
 // Assim as Security Rules do RTDB enxergam o uid do admin e conseguem bloquear
 // escrita/exclusao no servidor, e nao apenas na tela.
 function admApp(){
-  if(typeof firebase==='undefined'){
+  if(typeof firebase==='undefined'||typeof firebase.auth!=='function'){
     console.warn('SDK do Firebase indisponivel — modo admin desativado.');
     return null;
   }
@@ -3355,7 +3382,7 @@ function admApp(){
 
 // App SECUNDARIO, usado somente pela migracao ProdutiVix (outro projeto).
 function pvxApp(){
-  if(typeof firebase==='undefined') return null;
+  if(typeof firebase==='undefined'||typeof firebase.auth!=='function') return null;
   return firebase.apps.find(a=>a.name==='produtivix')
        ||firebase.initializeApp(PVX_CONFIG,'produtivix');
 }
@@ -3410,7 +3437,9 @@ async function admLogout(){
   _admOk=false; go('dash');
 }
 // Restaura sessão ao carregar (persistência local do Firebase)
-(function(){
+// v42: espera o SDK; antes, se o auth falhasse, este bloco quebrava o resto do script
+(async function(){
+  await window.FB_PRONTO;
   const a=admApp();
   if(!a){const el=$('nav-admout');if(el)el.style.display='none';return;}
   a.auth().onAuthStateChanged(async u=>{
@@ -4140,5 +4169,5 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) idleRese
 idleReset();
 </script>
 
-<script>console.log("%cGODMODE BUILD-CHECK v41 OK","color:#15803d;font-weight:bold;font-size:14px");</script>
+<script>console.log("%cGODMODE BUILD-CHECK v42 OK","color:#15803d;font-weight:bold;font-size:14px");(window.FB_PRONTO||Promise.resolve(false)).then(ok=>console.log(ok?"%cFirebase SDK OK (app/database/auth)":"%cFirebase SDK INCOMPLETO",ok?"color:#15803d;font-weight:bold":"color:#c2410c;font-weight:bold"));</script>
 </body></html>

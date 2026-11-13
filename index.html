@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <!-- ============================================================
-     GODMODE - Retorno de Materiais | FONTE OFICIAL v42
+     GODMODE - Retorno de Materiais | FONTE OFICIAL v43
+     v43: Saida de Fornecedores ganhou "Exportar CSV" por periodo (de/ate),
+          no mesmo modelo da pagina Divergencias. Com as duas datas, busca o
+          periodo direto no Firebase, inclusive fora da janela de 90 dias.
      v42: proteção contra falha de carregamento do Firebase
           (ERR_INSUFFICIENT_RESOURCES). Confere se app/database/auth
           carregaram, tenta baixar de novo (3 tentativas) e, se não der,
@@ -694,6 +697,15 @@ tr:hover td{background:#F4F2EA}
     <div class="kcard ok"><div class="klbl">Saldo Zero</div><div class="kval" id="sfKOk">382</div><div class="ksub">sem divergência</div></div>
     <div class="kcard dng"><div class="klbl">Divergência −</div><div class="kval" id="sfKNeg">497</div><div class="ksub">enviou, não confirmado</div></div>
     <div class="kcard wrn"><div class="klbl">Divergência +</div><div class="kval" id="sfKPos">48</div><div class="ksub">confirmado a mais</div></div>
+  </div>
+
+  <!-- exportar CSV por periodo (v43, mesmo modelo da pagina Divergencias) -->
+  <div class="tbar">
+    <span style="font-size:13px;color:var(--text2,#9fb3c8)">Exportar de</span>
+    <input type="date" id="sfExpIni" title="Data inicial">
+    <span style="font-size:13px;color:var(--text2,#9fb3c8)">até</span>
+    <input type="date" id="sfExpFim" title="Data final">
+    <button class="btn" id="btnSfCsv" onclick="expSfCSV()">⬇️ Exportar CSV</button>
   </div>
 
   <!-- toolbar -->
@@ -4043,6 +4055,54 @@ async function delSfSel(){
   await loadSfData();
 }
 
+// ===== EXPORTAR CSV — SAIDA FORNECEDORES (v43) =====
+// Mesmo modelo da pagina Divergencias. Com as duas datas preenchidas, busca o
+// periodo direto no Firebase (filtro no servidor pela data), entao funciona
+// mesmo para datas fora da janela carregada na tela (90 dias por padrao).
+// Sem datas, exporta o que esta carregado na tela.
+async function expSfCSV(){
+  const i=$('sfExpIni').value, f=$('sfExpFim').value;
+  if(i&&f&&i>f){ntfy('A data inicial é maior que a final','er');return}
+  if(i&&f&&Math.ceil((new Date(f)-new Date(i))/86400000)>370){
+    ntfy('Período máximo: 12 meses por exportação','er');return}
+  const btn=$('btnSfCsv'), txt=btn.innerHTML;
+  btn.innerHTML='<span class="ldr"></span> Gerando...';btn.disabled=true;
+  try{
+    let d;
+    if(i&&f&&fbReady&&DB){
+      const snap=fbLog('sf:exportCSV', await DB.ref('retorno_app/saida_fornecedores')
+        .orderByChild('data').startAt(i).endAt(f+'').once('value'));
+      d=Object.values(snap.val()||{});
+    }else{
+      await ensureSf();
+      d=[...SF_ALL];
+    }
+    if(i)d=d.filter(r=>(r.data||'').slice(0,10)>=i);
+    if(f)d=d.filter(r=>(r.data||'').slice(0,10)<=f);
+    if(!d.length){ntfy('Nenhuma movimentação no período','er');return}
+    d.sort((a,b)=>(a.data||'').localeCompare(b.data||'')||String(a.fornecedor||'').localeCompare(String(b.fornecedor||'')));
+    const cel=v=>{v=v??'';v=String(v);if(/[",\n]/.test(v))v='"'+v.replace(/"/g,'""')+'"';return v};
+    const hdr='DATA,CONTROLE,FORNECEDOR,MATERIAL,ENTRADA,SAIDA,SALDO,OP EXPEDICAO,OP MOVIMENTACAO,CONFERENTE,LANCADO POR';
+    const body=d.map(r=>{
+      const ent=Number(r.entrada)||0, sai=Number(r.saida)||0;
+      const dt=(r.data||'').slice(0,10).split('-').reverse().join('/');
+      return [dt,r.controle,r.fornecedor,r.material,ent,sai,ent-sai,
+        r.op_expedicao,r.op_movimentacao,r.conferente,r.lancado_por].map(cel).join(',');
+    });
+    const csv=[hdr,...body].join('\n');
+    const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    const per=(i||'inicio')+'_a_'+(f||'fim');
+    a.download=`saida_fornecedores_${per}.csv`;a.click();
+    ntfy('CSV de saída fornecedores — '+d.length.toLocaleString('pt-BR')+' registros','ok');
+  }catch(e){
+    console.error('expSfCSV:',e);
+    ntfy('Falha ao exportar: '+(e&&e.message?e.message:'erro'),'er');
+  }finally{
+    btn.innerHTML=txt;btn.disabled=false;
+  }
+}
+
 // ===================== FIM SAÍDA FORNECEDORES =====================
 
 function popSel(){
@@ -4169,5 +4229,5 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) idleRese
 idleReset();
 </script>
 
-<script>console.log("%cGODMODE BUILD-CHECK v42 OK","color:#15803d;font-weight:bold;font-size:14px");(window.FB_PRONTO||Promise.resolve(false)).then(ok=>console.log(ok?"%cFirebase SDK OK (app/database/auth)":"%cFirebase SDK INCOMPLETO",ok?"color:#15803d;font-weight:bold":"color:#c2410c;font-weight:bold"));</script>
+<script>console.log("%cGODMODE BUILD-CHECK v43 OK","color:#15803d;font-weight:bold;font-size:14px");(window.FB_PRONTO||Promise.resolve(false)).then(ok=>console.log(ok?"%cFirebase SDK OK (app/database/auth)":"%cFirebase SDK INCOMPLETO",ok?"color:#15803d;font-weight:bold":"color:#c2410c;font-weight:bold"));</script>
 </body></html>
